@@ -393,7 +393,7 @@ export const {
           // bottom has been evicted, drop the part - it would otherwise
           // be orphaned in store.part with no message to attach to.
           const messages = store.message[sessionID]
-          const inWindow = !messages || search(messages, messageID, (m) => m.id).found
+          const inWindow = !messages || messages.some((message) => message.id === messageID)
           if (!parts) {
             if (!inWindow && store.messageNewerCursor[sessionID]) break
             setStore("part", messageID, [event.properties.part])
