@@ -619,7 +619,7 @@ export const {
             sdk.client.session.todo({ sessionID }),
             sdk.client.session.diff({ sessionID }),
           ])
-          const olderCursor = (messages.response?.headers.get("X-Next-Cursor") as string | null | undefined) ?? null
+          const olderCursor = (messages.response?.headers.get("x-next-cursor") as string | null | undefined) ?? null
           setStore(
             produce((draft) => {
               const match = Binary.search(draft.session, sessionID, (s) => s.id)
@@ -645,7 +645,7 @@ export const {
           setStore("messageOlderLoading", sessionID, true)
           try {
             const res = await sdk.client.session.messages({ sessionID, limit: PAGE_SIZE, before: cursor })
-            const nextCursor = (res.response?.headers.get("X-Next-Cursor") as string | null | undefined) ?? null
+            const nextCursor = (res.response?.headers.get("x-next-cursor") as string | null | undefined) ?? null
             setStore(
               produce((draft) => {
                 const existing = draft.message[sessionID] ?? []
@@ -669,7 +669,7 @@ export const {
           setStore("messageNewerLoading", sessionID, true)
           try {
             const res = await sdk.client.session.messages({ sessionID, limit: PAGE_SIZE, after: cursor })
-            const nextCursor = (res.response?.headers.get("X-Next-Cursor") as string | null | undefined) ?? null
+            const nextCursor = (res.response?.headers.get("x-next-cursor") as string | null | undefined) ?? null
             setStore(
               produce((draft) => {
                 const existing = draft.message[sessionID] ?? []
