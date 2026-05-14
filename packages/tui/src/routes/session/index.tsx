@@ -434,7 +434,7 @@ export function Session() {
     if (!scroll || scroll.isDestroyed) return
     if (!sync.data.messageOlderCursor[route.sessionID]) return
     if (sync.data.messageOlderLoading[route.sessionID]) return
-    if (scroll.scrollTop > 5) return
+    if (scroll.scrollTop > NEAR_TOP_THRESHOLD) return
     // Anchor-based scroll restoration: identify the first visible child
     // so we can restore its position after content changes at either end.
     // Note: child.y includes the scroll offset, so child.y - scroll.y
@@ -458,7 +458,7 @@ export function Session() {
     if (!sync.data.messageNewerCursor[route.sessionID]) return
     if (sync.data.messageNewerLoading[route.sessionID]) return
     const distanceFromBottom = scroll.scrollHeight - scroll.height - scroll.scrollTop
-    if (distanceFromBottom > 5) return
+    if (distanceFromBottom > NEAR_BOTTOM_THRESHOLD) return
     // Anchor-based scroll restoration: identify the first visible child
     // so we can restore its position after content changes at either end.
     // Note: child.y includes the scroll offset, so child.y - scroll.y
