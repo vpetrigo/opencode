@@ -2988,11 +2988,11 @@
             }
           },
           "404": {
-            "description": "Not found",
+            "description": "McpServerNotFoundError",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
+                  "$ref": "#/components/schemas/McpServerNotFoundError"
                 }
               }
             }
@@ -3067,11 +3067,11 @@
             }
           },
           "404": {
-            "description": "Not found",
+            "description": "McpServerNotFoundError",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
+                  "$ref": "#/components/schemas/McpServerNotFoundError"
                 }
               }
             }
@@ -3146,11 +3146,11 @@
             }
           },
           "404": {
-            "description": "Not found",
+            "description": "McpServerNotFoundError",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
+                  "$ref": "#/components/schemas/McpServerNotFoundError"
                 }
               }
             }
@@ -3241,11 +3241,11 @@
             }
           },
           "404": {
-            "description": "Not found",
+            "description": "McpServerNotFoundError",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
+                  "$ref": "#/components/schemas/McpServerNotFoundError"
                 }
               }
             }
@@ -3312,6 +3312,16 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "McpServerNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerNotFoundError"
+                }
+              }
+            }
           }
         },
         "description": "Connect an MCP server.",
@@ -3371,6 +3381,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "McpServerNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerNotFoundError"
                 }
               }
             }
@@ -4348,11 +4368,11 @@
             }
           },
           "404": {
-            "description": "Not found",
+            "description": "QuestionNotFoundError",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
+                  "$ref": "#/components/schemas/QuestionNotFoundError"
                 }
               }
             }
@@ -4449,11 +4469,11 @@
             }
           },
           "404": {
-            "description": "Not found",
+            "description": "QuestionNotFoundError",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
+                  "$ref": "#/components/schemas/QuestionNotFoundError"
                 }
               }
             }
@@ -4588,11 +4608,11 @@
             }
           },
           "404": {
-            "description": "Not found",
+            "description": "PermissionNotFoundError",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
+                  "$ref": "#/components/schemas/PermissionNotFoundError"
                 }
               }
             }
@@ -7470,11 +7490,18 @@
             }
           },
           "404": {
-            "description": "NotFoundError",
+            "description": "NotFoundError | PermissionNotFoundError",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/NotFoundError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PermissionNotFoundError"
+                    }
+                  ]
                 }
               }
             }
@@ -13764,6 +13791,11 @@
           "scope": {
             "type": "string"
           },
+          "callbackPort": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
           "redirectUri": {
             "type": "string"
           }
@@ -15378,6 +15410,23 @@
         "required": ["error"],
         "additionalProperties": false
       },
+      "McpServerNotFoundError": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["McpServerNotFoundError"]
+          },
+          "name": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["_tag", "name", "message"],
+        "additionalProperties": false
+      },
       "NotFoundError": {
         "type": "object",
         "required": ["name", "data"],
@@ -15406,6 +15455,40 @@
           }
         },
         "required": ["_tag"],
+        "additionalProperties": false
+      },
+      "QuestionNotFoundError": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["QuestionNotFoundError"]
+          },
+          "requestID": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["_tag", "requestID", "message"],
+        "additionalProperties": false
+      },
+      "PermissionNotFoundError": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["PermissionNotFoundError"]
+          },
+          "requestID": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["_tag", "requestID", "message"],
         "additionalProperties": false
       },
       "ProviderAuthMethod": {

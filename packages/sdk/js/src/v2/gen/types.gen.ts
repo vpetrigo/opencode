@@ -1136,6 +1136,7 @@ export type McpOAuthConfig = {
   clientId?: string
   clientSecret?: string
   scope?: string
+  callbackPort?: number
   redirectUri?: string
 }
 
@@ -1693,6 +1694,12 @@ export type McpUnsupportedOAuthError = {
   error: string
 }
 
+export type McpServerNotFoundError = {
+  _tag: "McpServerNotFoundError"
+  name: string
+  message: string
+}
+
 export type NotFoundError = {
   name: "NotFoundError"
   data: {
@@ -1702,6 +1709,18 @@ export type NotFoundError = {
 
 export type EffectHttpApiErrorForbidden = {
   _tag: "Forbidden"
+}
+
+export type QuestionNotFoundError = {
+  _tag: "QuestionNotFoundError"
+  requestID: string
+  message: string
+}
+
+export type PermissionNotFoundError = {
+  _tag: "PermissionNotFoundError"
+  requestID: string
+  message: string
 }
 
 export type ProviderAuthMethod = {
@@ -5109,9 +5128,9 @@ export type McpAuthRemoveErrors = {
    */
   400: BadRequestError
   /**
-   * Not found
+   * McpServerNotFoundError
    */
-  404: NotFoundError
+  404: McpServerNotFoundError
 }
 
 export type McpAuthRemoveError = McpAuthRemoveErrors[keyof McpAuthRemoveErrors]
@@ -5145,9 +5164,9 @@ export type McpAuthStartErrors = {
    */
   400: McpUnsupportedOAuthError | InvalidRequestError
   /**
-   * Not found
+   * McpServerNotFoundError
    */
-  404: NotFoundError
+  404: McpServerNotFoundError
 }
 
 export type McpAuthStartError = McpAuthStartErrors[keyof McpAuthStartErrors]
@@ -5184,9 +5203,9 @@ export type McpAuthCallbackErrors = {
    */
   400: EffectHttpApiErrorBadRequest | InvalidRequestError
   /**
-   * Not found
+   * McpServerNotFoundError
    */
-  404: NotFoundError
+  404: McpServerNotFoundError
 }
 
 export type McpAuthCallbackError = McpAuthCallbackErrors[keyof McpAuthCallbackErrors]
@@ -5218,9 +5237,9 @@ export type McpAuthAuthenticateErrors = {
    */
   400: McpUnsupportedOAuthError | InvalidRequestError
   /**
-   * Not found
+   * McpServerNotFoundError
    */
-  404: NotFoundError
+  404: McpServerNotFoundError
 }
 
 export type McpAuthAuthenticateError = McpAuthAuthenticateErrors[keyof McpAuthAuthenticateErrors]
@@ -5251,6 +5270,10 @@ export type McpConnectErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * McpServerNotFoundError
+   */
+  404: McpServerNotFoundError
 }
 
 export type McpConnectError = McpConnectErrors[keyof McpConnectErrors]
@@ -5281,6 +5304,10 @@ export type McpDisconnectErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * McpServerNotFoundError
+   */
+  404: McpServerNotFoundError
 }
 
 export type McpDisconnectError = McpDisconnectErrors[keyof McpDisconnectErrors]
@@ -5717,9 +5744,9 @@ export type QuestionReplyErrors = {
    */
   400: EffectHttpApiErrorBadRequest | InvalidRequestError
   /**
-   * Not found
+   * QuestionNotFoundError
    */
-  404: NotFoundError
+  404: QuestionNotFoundError
 }
 
 export type QuestionReplyError = QuestionReplyErrors[keyof QuestionReplyErrors]
@@ -5751,9 +5778,9 @@ export type QuestionRejectErrors = {
    */
   400: EffectHttpApiErrorBadRequest | InvalidRequestError
   /**
-   * Not found
+   * QuestionNotFoundError
    */
-  404: NotFoundError
+  404: QuestionNotFoundError
 }
 
 export type QuestionRejectError = QuestionRejectErrors[keyof QuestionRejectErrors]
@@ -5816,9 +5843,9 @@ export type PermissionReplyErrors = {
    */
   400: EffectHttpApiErrorBadRequest | InvalidRequestError
   /**
-   * Not found
+   * PermissionNotFoundError
    */
-  404: NotFoundError
+  404: PermissionNotFoundError
 }
 
 export type PermissionReplyError = PermissionReplyErrors[keyof PermissionReplyErrors]
@@ -6917,9 +6944,9 @@ export type PermissionRespondErrors = {
    */
   400: EffectHttpApiErrorBadRequest | InvalidRequestError
   /**
-   * NotFoundError
+   * NotFoundError | PermissionNotFoundError
    */
-  404: NotFoundError
+  404: NotFoundError | PermissionNotFoundError
 }
 
 export type PermissionRespondError = PermissionRespondErrors[keyof PermissionRespondErrors]
