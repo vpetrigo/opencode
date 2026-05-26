@@ -13725,7 +13725,6 @@
                       }
                     }
                   },
-                  "required": ["input", "output"],
                   "additionalProperties": false
                 },
                 "experimental": {
