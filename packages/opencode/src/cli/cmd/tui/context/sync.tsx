@@ -29,7 +29,7 @@ import { useExit } from "./exit"
 import { useArgs } from "./args"
 import { batch, onMount } from "solid-js"
 import * as Log from "@opencode-ai/core/util/log"
-import { emptyConsoleState, type ConsoleState } from "@/config/console-state"
+import { emptyConsoleState, type ConsoleState } from "@opencode-ai/core/v1/config/console-state"
 import path from "path"
 import { useKV } from "./kv"
 import { aggregateFailures } from "./aggregate-failures"
@@ -129,6 +129,14 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const kv = useKV()
 
     const fullSyncedSessions = new Set<string>()
+    const syncingSessions = new Map<string, Promise<void>>()
+    const hydratingSessions = new Map<string, { messages: Set<string>; parts: Set<string> }>()
+    const touchMessage = (sessionID: string, messageID: string) => {
+      hydratingSessions.get(sessionID)?.messages.add(messageID)
+    }
+    const touchPart = (sessionID: string, partID: string) => {
+      hydratingSessions.get(sessionID)?.parts.add(partID)
+    }
 
     function sessionListQuery(): { scope?: "project"; path?: string } {
       if (!kv.get("session_directory_filter_enabled", true)) return { scope: "project" }
@@ -261,12 +269,29 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           break
         }
 
+        case "session.next.moved": {
+          const result = Binary.search(store.session, event.properties.sessionID, (s) => s.id)
+          if (!result.found) break
+          setStore(
+            "session",
+            result.index,
+            produce((session) => {
+              session.directory = event.properties.location.directory
+              session.path = event.properties.subdirectory
+              session.workspaceID = event.properties.location.workspaceID
+              session.time.updated = event.properties.timestamp
+            }),
+          )
+          break
+        }
+
         case "session.status": {
           setStore("session_status", event.properties.sessionID, event.properties.status)
           break
         }
 
         case "message.updated": {
+          touchMessage(event.properties.info.sessionID, event.properties.info.id)
           const sessionID = event.properties.info.sessionID
           const messages = store.message[sessionID]
           if (!messages) {
@@ -301,6 +326,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           break
         }
         case "message.removed": {
+          touchMessage(event.properties.sessionID, event.properties.messageID)
           const messages = store.message[event.properties.sessionID]
           const result = Binary.search(messages, event.properties.messageID, (m) => m.id)
           if (result.found) {
@@ -315,6 +341,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           break
         }
         case "message.part.updated": {
+          touchPart(event.properties.part.sessionID, event.properties.part.id)
           const sessionID = event.properties.part.sessionID
           const messageID = event.properties.part.messageID
           const parts = store.part[messageID]
@@ -351,6 +378,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           if (!parts) break
           const result = Binary.search(parts, event.properties.partID, (p) => p.id)
           if (!result.found) break
+          touchPart(event.properties.sessionID, event.properties.partID)
           setStore(
             "part",
             event.properties.messageID,
@@ -365,6 +393,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         }
 
         case "message.part.removed": {
+          touchPart(event.properties.sessionID, event.properties.partID)
           const parts = store.part[event.properties.messageID]
           const result = Binary.search(parts, event.properties.partID, (p) => p.id)
           if (result.found) {
@@ -540,33 +569,76 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           if (last.role === "user") return "working"
           return last.time.completed ? "idle" : "working"
         },
-        async sync(sessionID: string) {
+async sync(sessionID: string) {
           if (fullSyncedSessions.has(sessionID)) return
-          const [session, messages, todo, diff] = await Promise.all([
-            sdk.client.session.get({ sessionID }, { throwOnError: true }),
-            sdk.client.session.messages({ sessionID, limit: INITIAL_PAGE_SIZE }),
-            sdk.client.session.todo({ sessionID }),
-            sdk.client.session.diff({ sessionID }),
-          ])
-          const olderCursor = (messages.response?.headers.get("x-next-cursor") as string | null | undefined) ?? null
-          setStore(
-            produce((draft) => {
-              const match = Binary.search(draft.session, sessionID, (s) => s.id)
-              if (match.found) draft.session[match.index] = session.data!
-              if (!match.found) draft.session.splice(match.index, 0, session.data!)
-              draft.todo[sessionID] = todo.data ?? []
-              const infos: (typeof draft.message)[string] = []
-              for (const message of messages.data ?? []) {
-                infos.push(message.info)
-                draft.part[message.info.id] = message.parts
-              }
-              draft.message[sessionID] = infos
-              draft.session_diff[sessionID] = diff.data ?? []
-              draft.messageOlderCursor[sessionID] = olderCursor
-              draft.messageNewerCursor[sessionID] = null
-            }),
-          )
-          if (!olderCursor) fullSyncedSessions.add(sessionID)
+          const syncing = syncingSessions.get(sessionID)
+          if (syncing) return syncing
+          const tracker = { messages: new Set<string>(), parts: new Set<string>() }
+          hydratingSessions.set(sessionID, tracker)
+          const task = (async () => {
+            const [session, messages, todo, diff] = await Promise.all([
+              sdk.client.session.get({ sessionID }, { throwOnError: true }),
+              sdk.client.session.messages({ sessionID, limit: INITIAL_PAGE_SIZE }),
+              sdk.client.session.todo({ sessionID }),
+              sdk.client.session.diff({ sessionID }),
+            ])
+            const olderCursor = (messages.response?.headers.get("x-next-cursor") as string | null | undefined) ?? null
+            setStore(
+              produce((draft) => {
+                const match = Binary.search(draft.session, sessionID, (s) => s.id)
+                if (match.found) draft.session[match.index] = session.data!
+                if (!match.found) draft.session.splice(match.index, 0, session.data!)
+                draft.todo[sessionID] = todo.data ?? []
+                const currentMessages = draft.message[sessionID] ?? []
+                const infos: (typeof draft.message)[string] = []
+                for (const message of messages.data ?? []) {
+                  if (tracker.messages.has(message.info.id)) {
+                    const current = currentMessages.find((item) => item.id === message.info.id)
+                    infos.push(current ?? message.info)
+                  } else {
+                    infos.push(message.info)
+                  }
+                  const currentParts = draft.part[message.info.id] ?? []
+                  const parts = message.parts.flatMap((part) => {
+                    const current = currentParts.find((item) => item.id === part.id)
+                    if (tracker.parts.has(part.id)) return current ? [current] : []
+                    if (
+                      current &&
+                      (part.type === "text" || part.type === "reasoning") &&
+                      (current.type === "text" || current.type === "reasoning") &&
+                      part.text.length === 0 &&
+                      current.text.length > 0
+                    ) {
+                      return [current]
+                    }
+                    return [part]
+                  })
+                  parts.push(
+                    ...currentParts.filter(
+                      (part) => tracker.parts.has(part.id) && !parts.some((item) => item.id === part.id),
+                    ),
+                  )
+                  draft.part[message.info.id] = parts
+                }
+                // Append any in-flight messages not in the server response
+                infos.push(
+                  ...currentMessages.filter(
+                    (message) => tracker.messages.has(message.id) && !infos.some((item) => item.id === message.id),
+                  ),
+                )
+                draft.message[sessionID] = infos
+                draft.session_diff[sessionID] = diff.data ?? []
+                draft.messageOlderCursor[sessionID] = olderCursor
+                draft.messageNewerCursor[sessionID] = null
+              }),
+            )
+            if (!olderCursor) fullSyncedSessions.add(sessionID)
+          })().finally(() => {
+            syncingSessions.delete(sessionID)
+            hydratingSessions.delete(sessionID)
+          })
+          syncingSessions.set(sessionID, task)
+          return task
         },
         async loadOlderMessages(sessionID: string) {
           const cursor = store.messageOlderCursor[sessionID]
