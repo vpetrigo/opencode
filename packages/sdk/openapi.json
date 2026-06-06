@@ -3991,14 +3991,6 @@
             "required": true
           },
           {
-            "name": "directory",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          },
-          {
             "name": "workspace",
             "in": "query",
             "schema": {
@@ -4039,9 +4031,12 @@
                 "properties": {
                   "directory": {
                     "type": "string"
+                  },
+                  "force": {
+                    "type": "boolean"
                   }
                 },
-                "required": ["directory"],
+                "required": ["directory", "force"],
                 "additionalProperties": false
               }
             }
@@ -12106,6 +12101,9 @@
             "$ref": "#/components/schemas/EventSessionNextPromptPromoted"
           },
           {
+            "$ref": "#/components/schemas/EventSessionNextInterruptRequested"
+          },
+          {
             "$ref": "#/components/schemas/EventSessionNextContextUpdated"
           },
           {
@@ -14712,6 +14710,35 @@
                   },
                   "type": {
                     "type": "string",
+                    "enum": ["session.next.interrupt.requested"]
+                  },
+                  "properties": {
+                    "type": "object",
+                    "properties": {
+                      "timestamp": {
+                        "type": "number"
+                      },
+                      "sessionID": {
+                        "type": "string",
+                        "pattern": "^ses"
+                      }
+                    },
+                    "required": ["timestamp", "sessionID"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["id", "type", "properties"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^evt_"
+                  },
+                  "type": {
+                    "type": "string",
                     "enum": ["session.next.context.updated"]
                   },
                   "properties": {
@@ -15522,6 +15549,12 @@
                           ]
                         }
                       },
+                      "outputPaths": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
                       "result": {},
                       "provider": {
                         "type": "object",
@@ -15704,11 +15737,15 @@
                         "type": "string",
                         "pattern": "^ses"
                       },
+                      "messageID": {
+                        "type": "string",
+                        "pattern": "^msg_"
+                      },
                       "text": {
                         "type": "string"
                       }
                     },
-                    "required": ["timestamp", "sessionID", "text"],
+                    "required": ["timestamp", "sessionID", "messageID", "text"],
                     "additionalProperties": false
                   }
                 },
@@ -15736,14 +15773,22 @@
                         "type": "string",
                         "pattern": "^ses"
                       },
+                      "messageID": {
+                        "type": "string",
+                        "pattern": "^msg_"
+                      },
+                      "reason": {
+                        "type": "string",
+                        "enum": ["auto", "manual"]
+                      },
                       "text": {
                         "type": "string"
                       },
-                      "include": {
+                      "recent": {
                         "type": "string"
                       }
                     },
-                    "required": ["timestamp", "sessionID", "text"],
+                    "required": ["timestamp", "sessionID", "messageID", "reason", "text", "recent"],
                     "additionalProperties": false
                   }
                 },
@@ -17261,6 +17306,9 @@
                 "$ref": "#/components/schemas/SyncEventSessionNextPromptPromoted"
               },
               {
+                "$ref": "#/components/schemas/SyncEventSessionNextInterruptRequested"
+              },
+              {
                 "$ref": "#/components/schemas/SyncEventSessionNextContextUpdated"
               },
               {
@@ -17316,9 +17364,6 @@
               },
               {
                 "$ref": "#/components/schemas/SyncEventSessionNextCompactionStarted"
-              },
-              {
-                "$ref": "#/components/schemas/SyncEventSessionNextCompactionDelta"
               },
               {
                 "$ref": "#/components/schemas/SyncEventSessionNextCompactionEnded"
@@ -19584,6 +19629,9 @@
             "properties": {
               "message": {
                 "type": "string"
+              },
+              "forceRequired": {
+                "type": "boolean"
               }
             },
             "required": ["message"],
@@ -20726,6 +20774,182 @@
               "body": {
                 "type": "object"
               },
+              "generation": {
+                "type": "object",
+                "properties": {
+                  "maxTokens": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["NaN"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["-Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity", "-Infinity", "NaN"]
+                      }
+                    ]
+                  },
+                  "temperature": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["NaN"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["-Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity", "-Infinity", "NaN"]
+                      }
+                    ]
+                  },
+                  "topP": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["NaN"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["-Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity", "-Infinity", "NaN"]
+                      }
+                    ]
+                  },
+                  "topK": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["NaN"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["-Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity", "-Infinity", "NaN"]
+                      }
+                    ]
+                  },
+                  "frequencyPenalty": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["NaN"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["-Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity", "-Infinity", "NaN"]
+                      }
+                    ]
+                  },
+                  "presencePenalty": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["NaN"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["-Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity", "-Infinity", "NaN"]
+                      }
+                    ]
+                  },
+                  "seed": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["NaN"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["-Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity", "-Infinity", "NaN"]
+                      }
+                    ]
+                  },
+                  "stop": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "options": {
+                "type": "object"
+              },
               "variant": {
                 "type": "string"
               }
@@ -20748,6 +20972,182 @@
                   }
                 },
                 "body": {
+                  "type": "object"
+                },
+                "generation": {
+                  "type": "object",
+                  "properties": {
+                    "maxTokens": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["NaN"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["-Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity", "-Infinity", "NaN"]
+                        }
+                      ]
+                    },
+                    "temperature": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["NaN"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["-Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity", "-Infinity", "NaN"]
+                        }
+                      ]
+                    },
+                    "topP": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["NaN"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["-Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity", "-Infinity", "NaN"]
+                        }
+                      ]
+                    },
+                    "topK": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["NaN"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["-Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity", "-Infinity", "NaN"]
+                        }
+                      ]
+                    },
+                    "frequencyPenalty": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["NaN"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["-Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity", "-Infinity", "NaN"]
+                        }
+                      ]
+                    },
+                    "presencePenalty": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["NaN"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["-Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity", "-Infinity", "NaN"]
+                        }
+                      ]
+                    },
+                    "seed": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["NaN"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["-Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity", "-Infinity", "NaN"]
+                        }
+                      ]
+                    },
+                    "stop": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "options": {
                   "type": "object"
                 }
               },
@@ -21991,6 +22391,56 @@
         "required": ["type", "id", "syncEvent"],
         "additionalProperties": false
       },
+      "SyncEventSessionNextInterruptRequested": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["sync"]
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "syncEvent": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["session.next.interrupt.requested.1"]
+              },
+              "id": {
+                "type": "string",
+                "pattern": "^evt_"
+              },
+              "seq": {
+                "type": "number"
+              },
+              "aggregateID": {
+                "type": "string"
+              },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "timestamp": {
+                    "type": "number"
+                  },
+                  "sessionID": {
+                    "type": "string",
+                    "pattern": "^ses"
+                  }
+                },
+                "required": ["timestamp", "sessionID"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["type", "id", "seq", "aggregateID", "data"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["type", "id", "syncEvent"],
+        "additionalProperties": false
+      },
       "SyncEventSessionNextContextUpdated": {
         "type": "object",
         "properties": {
@@ -23025,6 +23475,12 @@
                       ]
                     }
                   },
+                  "outputPaths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
                   "result": {},
                   "provider": {
                     "type": "object",
@@ -23253,59 +23709,6 @@
         "required": ["type", "id", "syncEvent"],
         "additionalProperties": false
       },
-      "SyncEventSessionNextCompactionDelta": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": ["sync"]
-          },
-          "id": {
-            "type": "string",
-            "pattern": "^evt_"
-          },
-          "syncEvent": {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": ["session.next.compaction.delta.1"]
-              },
-              "id": {
-                "type": "string",
-                "pattern": "^evt_"
-              },
-              "seq": {
-                "type": "number"
-              },
-              "aggregateID": {
-                "type": "string"
-              },
-              "data": {
-                "type": "object",
-                "properties": {
-                  "timestamp": {
-                    "type": "number"
-                  },
-                  "sessionID": {
-                    "type": "string",
-                    "pattern": "^ses"
-                  },
-                  "text": {
-                    "type": "string"
-                  }
-                },
-                "required": ["timestamp", "sessionID", "text"],
-                "additionalProperties": false
-              }
-            },
-            "required": ["type", "id", "seq", "aggregateID", "data"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["type", "id", "syncEvent"],
-        "additionalProperties": false
-      },
       "SyncEventSessionNextCompactionEnded": {
         "type": "object",
         "properties": {
@@ -23322,7 +23725,7 @@
             "properties": {
               "type": {
                 "type": "string",
-                "enum": ["session.next.compaction.ended.1"]
+                "enum": ["session.next.compaction.ended.2"]
               },
               "id": {
                 "type": "string",
@@ -23344,14 +23747,22 @@
                     "type": "string",
                     "pattern": "^ses"
                   },
+                  "messageID": {
+                    "type": "string",
+                    "pattern": "^msg_"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": ["auto", "manual"]
+                  },
                   "text": {
                     "type": "string"
                   },
-                  "include": {
+                  "recent": {
                     "type": "string"
                   }
                 },
-                "required": ["timestamp", "sessionID", "text"],
+                "required": ["timestamp", "sessionID", "messageID", "reason", "text", "recent"],
                 "additionalProperties": false
               }
             },
@@ -23996,6 +24407,12 @@
               ]
             }
           },
+          "outputPaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "structured": {
             "type": "object"
           },
@@ -24242,7 +24659,7 @@
           "summary": {
             "type": "string"
           },
-          "include": {
+          "recent": {
             "type": "string"
           },
           "id": {
@@ -24263,7 +24680,7 @@
             "additionalProperties": false
           }
         },
-        "required": ["type", "reason", "summary", "id", "time"],
+        "required": ["type", "reason", "summary", "recent", "id", "time"],
         "additionalProperties": false
       },
       "SessionMessage": {
@@ -24772,6 +25189,154 @@
               "body": {
                 "type": "object"
               },
+              "generation": {
+                "type": "object",
+                "properties": {
+                  "maxTokens": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["NaN"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["-Infinity"]
+                      }
+                    ]
+                  },
+                  "temperature": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["NaN"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["-Infinity"]
+                      }
+                    ]
+                  },
+                  "topP": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["NaN"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["-Infinity"]
+                      }
+                    ]
+                  },
+                  "topK": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["NaN"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["-Infinity"]
+                      }
+                    ]
+                  },
+                  "frequencyPenalty": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["NaN"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["-Infinity"]
+                      }
+                    ]
+                  },
+                  "presencePenalty": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["NaN"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["-Infinity"]
+                      }
+                    ]
+                  },
+                  "seed": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["NaN"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["-Infinity"]
+                      }
+                    ]
+                  },
+                  "stop": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "options": {
+                "type": "object"
+              },
               "variant": {
                 "type": "string"
               }
@@ -24794,6 +25359,154 @@
                   }
                 },
                 "body": {
+                  "type": "object"
+                },
+                "generation": {
+                  "type": "object",
+                  "properties": {
+                    "maxTokens": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["NaN"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["-Infinity"]
+                        }
+                      ]
+                    },
+                    "temperature": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["NaN"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["-Infinity"]
+                        }
+                      ]
+                    },
+                    "topP": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["NaN"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["-Infinity"]
+                        }
+                      ]
+                    },
+                    "topK": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["NaN"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["-Infinity"]
+                        }
+                      ]
+                    },
+                    "frequencyPenalty": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["NaN"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["-Infinity"]
+                        }
+                      ]
+                    },
+                    "presencePenalty": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["NaN"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["-Infinity"]
+                        }
+                      ]
+                    },
+                    "seed": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["NaN"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["Infinity"]
+                        },
+                        {
+                          "type": "string",
+                          "enum": ["-Infinity"]
+                        }
+                      ]
+                    },
+                    "stop": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "options": {
                   "type": "object"
                 }
               },
@@ -25380,6 +26093,35 @@
               }
             },
             "required": ["timestamp", "sessionID", "messageID", "prompt", "timeCreated"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "type", "properties"],
+        "additionalProperties": false
+      },
+      "EventSessionNextInterruptRequested": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["session.next.interrupt.requested"]
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "timestamp": {
+                "type": "number"
+              },
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              }
+            },
+            "required": ["timestamp", "sessionID"],
             "additionalProperties": false
           }
         },
@@ -26205,6 +26947,12 @@
                   ]
                 }
               },
+              "outputPaths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
               "result": {},
               "provider": {
                 "type": "object",
@@ -26379,11 +27127,15 @@
                 "type": "string",
                 "pattern": "^ses"
               },
+              "messageID": {
+                "type": "string",
+                "pattern": "^msg_"
+              },
               "text": {
                 "type": "string"
               }
             },
-            "required": ["timestamp", "sessionID", "text"],
+            "required": ["timestamp", "sessionID", "messageID", "text"],
             "additionalProperties": false
           }
         },
@@ -26411,14 +27163,22 @@
                 "type": "string",
                 "pattern": "^ses"
               },
+              "messageID": {
+                "type": "string",
+                "pattern": "^msg_"
+              },
+              "reason": {
+                "type": "string",
+                "enum": ["auto", "manual"]
+              },
               "text": {
                 "type": "string"
               },
-              "include": {
+              "recent": {
                 "type": "string"
               }
             },
-            "required": ["timestamp", "sessionID", "text"],
+            "required": ["timestamp", "sessionID", "messageID", "reason", "text", "recent"],
             "additionalProperties": false
           }
         },
