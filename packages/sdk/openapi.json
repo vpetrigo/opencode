@@ -17820,7 +17820,7 @@
                       "properties": {
                         "field": {
                           "type": "string",
-                          "enum": ["reasoning_content", "reasoning_details"]
+                          "enum": ["reasoning", "reasoning_content", "reasoning_details"]
                         }
                       },
                       "required": ["field"],
@@ -18598,7 +18598,7 @@
                     "properties": {
                       "field": {
                         "type": "string",
-                        "enum": ["reasoning_content", "reasoning_details"]
+                        "enum": ["reasoning", "reasoning_content", "reasoning_details"]
                       }
                     },
                     "required": ["field"],
