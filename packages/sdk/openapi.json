@@ -12471,7 +12471,7 @@
         ]
       }
     },
-    "/api/fs/read": {
+    "/api/fs/read/*": {
       "get": {
         "tags": ["filesystem"],
         "operationId": "v2.fs.read",
@@ -12494,14 +12494,6 @@
             "required": false,
             "style": "deepObject",
             "explode": true
-          },
-          {
-            "name": "path",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
           }
         ],
         "security": [],
@@ -12509,19 +12501,10 @@
           "200": {
             "description": "Success",
             "content": {
-              "application/json": {
+              "application/octet-stream": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "location": {
-                      "$ref": "#/components/schemas/LocationInfo"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/FileSystemContent"
-                    }
-                  },
-                  "required": ["location", "data"],
-                  "additionalProperties": false
+                  "type": "string",
+                  "format": "binary"
                 }
               }
             }
@@ -12547,7 +12530,7 @@
             }
           }
         },
-        "description": "Read one file relative to the requested location.",
+        "description": "Serve one file relative to the requested location.",
         "summary": "Read file",
         "x-codeSamples": [
           {
@@ -14400,6 +14383,27 @@
         "required": ["name", "data"],
         "additionalProperties": false
       },
+      "ContentFilterError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": ["ContentFilterError"]
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["name", "data"],
+        "additionalProperties": false
+      },
       "APIError": {
         "type": "object",
         "properties": {
@@ -14492,6 +14496,9 @@
               },
               {
                 "$ref": "#/components/schemas/ContextOverflowError"
+              },
+              {
+                "$ref": "#/components/schemas/ContentFilterError"
               },
               {
                 "$ref": "#/components/schemas/APIError"
@@ -17423,6 +17430,9 @@
                           },
                           {
                             "$ref": "#/components/schemas/ContextOverflowError"
+                          },
+                          {
+                            "$ref": "#/components/schemas/ContentFilterError"
                           },
                           {
                             "$ref": "#/components/schemas/APIError"
@@ -26568,29 +26578,6 @@
         "required": ["id", "projectID", "action", "resource"],
         "additionalProperties": false
       },
-      "FileSystemContent": {
-        "type": "object",
-        "properties": {
-          "uri": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "content": {
-            "type": "string"
-          },
-          "encoding": {
-            "type": "string",
-            "enum": ["utf8", "base64"]
-          },
-          "mime": {
-            "type": "string"
-          }
-        },
-        "required": ["uri", "content", "encoding", "mime"],
-        "additionalProperties": false
-      },
       "FileSystemEntry": {
         "type": "object",
         "properties": {
@@ -29105,6 +29092,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/ContextOverflowError"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ContentFilterError"
                   },
                   {
                     "$ref": "#/components/schemas/APIError"
