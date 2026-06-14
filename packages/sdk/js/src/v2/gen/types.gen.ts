@@ -56,6 +56,7 @@ export type Event =
   | EventPermissionV2Asked
   | EventPermissionV2Replied
   | EventReferenceUpdated
+  | EventProjectDirectoriesUpdated
   | EventFileWatcherUpdated
   | EventPtyCreated
   | EventPtyUpdated
@@ -75,7 +76,6 @@ export type Event =
   | EventMcpToolsChanged
   | EventMcpBrowserOpenFailed
   | EventCommandExecuted
-  | EventProjectDirectoriesUpdated
   | EventProjectUpdated
   | EventSessionStatus
   | EventSessionIdle
@@ -650,6 +650,7 @@ export type Pty = {
   cwd: string
   status: "running" | "exited"
   pid: number
+  exitCode?: number
 }
 
 export type Todo = {
@@ -1296,6 +1297,13 @@ export type GlobalEvent = {
       }
     | {
         id: string
+        type: "project.directories.updated"
+        properties: {
+          projectID: string
+        }
+      }
+    | {
+        id: string
         type: "file.watcher.updated"
         properties: {
           file: string
@@ -1477,13 +1485,6 @@ export type GlobalEvent = {
           sessionID: string
           arguments: string
           messageID: string
-        }
-      }
-    | {
-        id: string
-        type: "project.directories.updated"
-        properties: {
-          projectID: string
         }
       }
     | {
@@ -2464,14 +2465,6 @@ export type ProjectNotFoundError = {
   message: string
 }
 
-export type ProjectCopyError = {
-  name: "ProjectCopyError"
-  data: {
-    message: string
-    forceRequired?: boolean
-  }
-}
-
 export type PtyNotFoundError = {
   _tag: "PtyNotFoundError"
   ptyID: string
@@ -2765,6 +2758,19 @@ export type ProviderNotFoundError = {
   _tag: "ProviderNotFoundError"
   providerID: string
   message: string
+}
+
+export type ForbiddenError = {
+  _tag: "ForbiddenError"
+  message: string
+}
+
+export type ProjectCopyError = {
+  name: "ProjectCopyError"
+  data: {
+    message: string
+    forceRequired?: boolean
+  }
 }
 
 export type EffectHttpApiErrorForbidden = {
@@ -3699,12 +3705,8 @@ export type ConfigV2ExperimentalPolicy = {
 
 export type ProjectDirectories = Array<{
   directory: string
-  type: "main" | "root" | "git_worktree"
+  strategy?: string
 }>
-
-export type ProjectCopyCopy = {
-  directory: string
-}
 
 export type LocationInfo = {
   directory: string
@@ -4224,6 +4226,10 @@ export type ReferenceInfo = {
   description?: string
   hidden?: boolean
   source: ReferenceLocalSource | ReferenceGitSource
+}
+
+export type ProjectCopyCopy = {
+  directory: string
 }
 
 export type EventModelsDevRefreshed = {
@@ -4938,6 +4944,14 @@ export type EventReferenceUpdated = {
   }
 }
 
+export type EventProjectDirectoriesUpdated = {
+  id: string
+  type: "project.directories.updated"
+  properties: {
+    projectID: string
+  }
+}
+
 export type EventFileWatcherUpdated = {
   id: string
   type: "file.watcher.updated"
@@ -5084,14 +5098,6 @@ export type EventCommandExecuted = {
     sessionID: string
     arguments: string
     messageID: string
-  }
-}
-
-export type EventProjectDirectoriesUpdated = {
-  id: string
-  type: "project.directories.updated"
-  properties: {
-    projectID: string
   }
 }
 
@@ -6994,78 +7000,10 @@ export type ProjectDirectoriesResponses = {
 
 export type ProjectDirectoriesResponse = ProjectDirectoriesResponses[keyof ProjectDirectoriesResponses]
 
-export type ExperimentalProjectCopyRemoveData = {
+export type ExperimentalProjectCopyGenerateNameData = {
   body?: {
-    directory: string
-    force: boolean
-  }
-  path: {
-    projectID: string
-  }
-  query?: {
-    workspace?: string
-  }
-  url: "/experimental/project/{projectID}/copy"
-}
-
-export type ExperimentalProjectCopyRemoveErrors = {
-  /**
-   * ProjectCopyError | InvalidRequestError
-   */
-  400: ProjectCopyError | InvalidRequestError
-}
-
-export type ExperimentalProjectCopyRemoveError =
-  ExperimentalProjectCopyRemoveErrors[keyof ExperimentalProjectCopyRemoveErrors]
-
-export type ExperimentalProjectCopyRemoveResponses = {
-  /**
-   * Project copy removed
-   */
-  204: void
-}
-
-export type ExperimentalProjectCopyRemoveResponse =
-  ExperimentalProjectCopyRemoveResponses[keyof ExperimentalProjectCopyRemoveResponses]
-
-export type ExperimentalProjectCopyCreateData = {
-  body?: {
-    strategy: "git_worktree"
-    directory: string
-    name?: string
     context?: string
   }
-  path: {
-    projectID: string
-  }
-  query?: {
-    workspace?: string
-  }
-  url: "/experimental/project/{projectID}/copy"
-}
-
-export type ExperimentalProjectCopyCreateErrors = {
-  /**
-   * ProjectCopyError | InvalidRequestError
-   */
-  400: ProjectCopyError | InvalidRequestError
-}
-
-export type ExperimentalProjectCopyCreateError =
-  ExperimentalProjectCopyCreateErrors[keyof ExperimentalProjectCopyCreateErrors]
-
-export type ExperimentalProjectCopyCreateResponses = {
-  /**
-   * Project copy created
-   */
-  200: ProjectCopyCopy
-}
-
-export type ExperimentalProjectCopyCreateResponse =
-  ExperimentalProjectCopyCreateResponses[keyof ExperimentalProjectCopyCreateResponses]
-
-export type ExperimentalProjectCopyRefreshData = {
-  body?: never
   path: {
     projectID: string
   }
@@ -7073,28 +7011,30 @@ export type ExperimentalProjectCopyRefreshData = {
     directory?: string
     workspace?: string
   }
-  url: "/experimental/project/{projectID}/copy/refresh"
+  url: "/experimental/project/{projectID}/copy/generate-name"
 }
 
-export type ExperimentalProjectCopyRefreshErrors = {
+export type ExperimentalProjectCopyGenerateNameErrors = {
   /**
-   * ProjectCopyError | InvalidRequestError
+   * Bad request
    */
-  400: ProjectCopyError | InvalidRequestError
+  400: BadRequestError
 }
 
-export type ExperimentalProjectCopyRefreshError =
-  ExperimentalProjectCopyRefreshErrors[keyof ExperimentalProjectCopyRefreshErrors]
+export type ExperimentalProjectCopyGenerateNameError =
+  ExperimentalProjectCopyGenerateNameErrors[keyof ExperimentalProjectCopyGenerateNameErrors]
 
-export type ExperimentalProjectCopyRefreshResponses = {
+export type ExperimentalProjectCopyGenerateNameResponses = {
   /**
-   * Project copies refreshed
+   * Success
    */
-  204: void
+  200: {
+    name: string
+  }
 }
 
-export type ExperimentalProjectCopyRefreshResponse =
-  ExperimentalProjectCopyRefreshResponses[keyof ExperimentalProjectCopyRefreshResponses]
+export type ExperimentalProjectCopyGenerateNameResponse =
+  ExperimentalProjectCopyGenerateNameResponses[keyof ExperimentalProjectCopyGenerateNameResponses]
 
 export type PtyShellsData = {
   body?: never
@@ -10769,6 +10709,314 @@ export type V2EventSubscribeResponses = {
 
 export type V2EventSubscribeResponse = V2EventSubscribeResponses[keyof V2EventSubscribeResponses]
 
+export type V2PtyListData = {
+  body?: never
+  path?: never
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/pty"
+}
+
+export type V2PtyListErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2PtyListError = V2PtyListErrors[keyof V2PtyListErrors]
+
+export type V2PtyListResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: Array<Pty>
+  }
+}
+
+export type V2PtyListResponse = V2PtyListResponses[keyof V2PtyListResponses]
+
+export type V2PtyCreateData = {
+  body: {
+    command?: string
+    args?: Array<string>
+    cwd?: string
+    title?: string
+    env?: {
+      [key: string]: string
+    }
+  }
+  path?: never
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/pty"
+}
+
+export type V2PtyCreateErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2PtyCreateError = V2PtyCreateErrors[keyof V2PtyCreateErrors]
+
+export type V2PtyCreateResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: Pty
+  }
+}
+
+export type V2PtyCreateResponse = V2PtyCreateResponses[keyof V2PtyCreateResponses]
+
+export type V2PtyRemoveData = {
+  body?: never
+  path: {
+    ptyID: string
+  }
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/pty/{ptyID}"
+}
+
+export type V2PtyRemoveErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * PtyNotFoundError
+   */
+  404: PtyNotFoundError
+}
+
+export type V2PtyRemoveError = V2PtyRemoveErrors[keyof V2PtyRemoveErrors]
+
+export type V2PtyRemoveResponses = {
+  /**
+   * <No Content>
+   */
+  204: void
+}
+
+export type V2PtyRemoveResponse = V2PtyRemoveResponses[keyof V2PtyRemoveResponses]
+
+export type V2PtyGetData = {
+  body?: never
+  path: {
+    ptyID: string
+  }
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/pty/{ptyID}"
+}
+
+export type V2PtyGetErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * PtyNotFoundError
+   */
+  404: PtyNotFoundError
+}
+
+export type V2PtyGetError = V2PtyGetErrors[keyof V2PtyGetErrors]
+
+export type V2PtyGetResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: Pty
+  }
+}
+
+export type V2PtyGetResponse = V2PtyGetResponses[keyof V2PtyGetResponses]
+
+export type V2PtyUpdateData = {
+  body: {
+    title?: string
+    size?: {
+      rows: number
+      cols: number
+    }
+  }
+  path: {
+    ptyID: string
+  }
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/pty/{ptyID}"
+}
+
+export type V2PtyUpdateErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * PtyNotFoundError
+   */
+  404: PtyNotFoundError
+}
+
+export type V2PtyUpdateError = V2PtyUpdateErrors[keyof V2PtyUpdateErrors]
+
+export type V2PtyUpdateResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: Pty
+  }
+}
+
+export type V2PtyUpdateResponse = V2PtyUpdateResponses[keyof V2PtyUpdateResponses]
+
+export type V2PtyConnectTokenData = {
+  body?: never
+  path: {
+    ptyID: string
+  }
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/pty/{ptyID}/connect-token"
+}
+
+export type V2PtyConnectTokenErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
+  /**
+   * PtyNotFoundError
+   */
+  404: PtyNotFoundError
+}
+
+export type V2PtyConnectTokenError = V2PtyConnectTokenErrors[keyof V2PtyConnectTokenErrors]
+
+export type V2PtyConnectTokenResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: {
+      ticket: string
+      expires_in: number
+    }
+  }
+}
+
+export type V2PtyConnectTokenResponse = V2PtyConnectTokenResponses[keyof V2PtyConnectTokenResponses]
+
+export type V2PtyConnectData = {
+  body?: never
+  path: {
+    ptyID: string
+  }
+  query?: {
+    "location[directory]"?: string
+    "location[workspace]"?: string
+    cursor?: string
+    ticket?: string
+  }
+  url: "/api/pty/{ptyID}/connect"
+}
+
+export type V2PtyConnectErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
+  /**
+   * PtyNotFoundError
+   */
+  404: PtyNotFoundError
+}
+
+export type V2PtyConnectError = V2PtyConnectErrors[keyof V2PtyConnectErrors]
+
+export type V2PtyConnectResponses = {
+  /**
+   * Success
+   */
+  200: boolean
+}
+
+export type V2PtyConnectResponse = V2PtyConnectResponses[keyof V2PtyConnectResponses]
+
 export type V2QuestionRequestListData = {
   body?: never
   path?: never
@@ -10951,6 +11199,109 @@ export type V2ReferenceListResponses = {
 }
 
 export type V2ReferenceListResponse = V2ReferenceListResponses[keyof V2ReferenceListResponses]
+
+export type V2ProjectCopyRemoveData = {
+  body?: {
+    directory: string
+    force: boolean
+  }
+  path: {
+    projectID: string
+  }
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/experimental/project/{projectID}/copy"
+}
+
+export type V2ProjectCopyRemoveErrors = {
+  /**
+   * ProjectCopyError | InvalidRequestError
+   */
+  400: ProjectCopyError | InvalidRequestError
+}
+
+export type V2ProjectCopyRemoveError = V2ProjectCopyRemoveErrors[keyof V2ProjectCopyRemoveErrors]
+
+export type V2ProjectCopyRemoveResponses = {
+  /**
+   * <No Content>
+   */
+  204: void
+}
+
+export type V2ProjectCopyRemoveResponse = V2ProjectCopyRemoveResponses[keyof V2ProjectCopyRemoveResponses]
+
+export type V2ProjectCopyCreateData = {
+  body?: {
+    strategy: string
+    directory: string
+    name?: string
+  }
+  path: {
+    projectID: string
+  }
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/experimental/project/{projectID}/copy"
+}
+
+export type V2ProjectCopyCreateErrors = {
+  /**
+   * ProjectCopyError | InvalidRequestError
+   */
+  400: ProjectCopyError | InvalidRequestError
+}
+
+export type V2ProjectCopyCreateError = V2ProjectCopyCreateErrors[keyof V2ProjectCopyCreateErrors]
+
+export type V2ProjectCopyCreateResponses = {
+  /**
+   * ProjectCopy.Copy
+   */
+  200: ProjectCopyCopy
+}
+
+export type V2ProjectCopyCreateResponse = V2ProjectCopyCreateResponses[keyof V2ProjectCopyCreateResponses]
+
+export type V2ProjectCopyRefreshData = {
+  body?: never
+  path: {
+    projectID: string
+  }
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/experimental/project/{projectID}/copy/refresh"
+}
+
+export type V2ProjectCopyRefreshErrors = {
+  /**
+   * ProjectCopyError | InvalidRequestError
+   */
+  400: ProjectCopyError | InvalidRequestError
+}
+
+export type V2ProjectCopyRefreshError = V2ProjectCopyRefreshErrors[keyof V2ProjectCopyRefreshErrors]
+
+export type V2ProjectCopyRefreshResponses = {
+  /**
+   * <No Content>
+   */
+  204: void
+}
+
+export type V2ProjectCopyRefreshResponse = V2ProjectCopyRefreshResponses[keyof V2ProjectCopyRefreshResponses]
 
 export type PtyConnectData = {
   body?: never
