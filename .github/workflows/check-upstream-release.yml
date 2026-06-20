@@ -1,0 +1,49 @@
+name: Check upstream release
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 5 * * *'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout fork automation branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect upstream release and trigger build
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Sanitize-Tag([string]$value) {
+            $sanitized = $value -replace '[^A-Za-z0-9._-]', '-'
+            $sanitized = $sanitized -replace '-+', '-'
+            $sanitized = $sanitized.Trim('-')
+            if ([string]::IsNullOrWhiteSpace($sanitized)) { return 'ref' }
+            return $sanitized
+          }
+
+          $release = gh api repos/anomalyco/opencode/releases/latest --jq '.tag_name'
+          if ($release -notmatch '^v\d+\.\d+\.\d+$') {
+            Write-Host "Latest upstream release '$release' does not match vX.Y.Z; skipping."
+            exit 0
+          }
+
+          $tagName = "pr-7380-$(Sanitize-Tag $release)"
+          $exists = gh release view $tagName --repo $env:GITHUB_REPOSITORY --json tagName --jq '.tagName' 2>$null
+          if ($LASTEXITCODE -eq 0 -and $exists) {
+            Write-Host "Fork release '$tagName' already exists."
+            exit 0
+          }
+
+          gh workflow run 'build-pr-verification-release.yml' --repo $env:GITHUB_REPOSITORY --ref $env:GITHUB_REF_NAME -f upstream_ref=$release -f patch_branch=issue/7380 -f release_name=$tagName -f prerelease=true
