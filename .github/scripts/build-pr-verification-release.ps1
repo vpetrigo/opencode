@@ -192,6 +192,7 @@ $releaseArgs = @(
   $buildInfoPath,
   $installNotesPath,
   (Join-Path $releaseRoot 'SHA256SUMS.txt'),
+  '--repo', $env:GITHUB_REPOSITORY,
   '--title', $releaseName,
   '--notes', $releaseNotes
 )
