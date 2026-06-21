@@ -40,6 +40,9 @@ git checkout -b "generated-$tagName" $baseRef
 git merge --no-edit "refs/remotes/origin/$($env:PATCH_BRANCH)"
 $mergeCommit = git rev-parse HEAD
 
+# TODO: remove that once opentui-spinner is fixed
+(Get-Content package.json) -replace '("opentui-spinner":\s*)"[^"]+"', '$1"0.0.6"' | Set-Content package.json
+
 & bun --version
 & bun install
 & bun ./packages/opencode/script/build.ts --single
