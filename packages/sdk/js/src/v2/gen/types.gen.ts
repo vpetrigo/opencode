@@ -9442,6 +9442,7 @@ export type SessionListData = {
     path?: string
     roots?: boolean | "true" | "false"
     start?: number
+    cursor?: string
     search?: string
     limit?: number
   }
