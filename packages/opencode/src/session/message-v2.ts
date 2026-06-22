@@ -22,12 +22,15 @@ import {
 import { NamedError } from "@opencode-ai/core/util/error"
 import { APICallError, convertToModelMessages, LoadAPIKeyError, type ModelMessage, type UIMessage } from "ai"
 import { Database } from "@opencode-ai/core/database/database"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { NotFoundError } from "@/storage/storage"
 import { and } from "drizzle-orm"
 import { desc } from "drizzle-orm"
 import { eq } from "drizzle-orm"
 import { inArray } from "drizzle-orm"
 import { lt } from "drizzle-orm"
+import { gt } from "drizzle-orm"
+import { asc } from "drizzle-orm"
 import { or } from "drizzle-orm"
 import { MessageTable, PartTable, SessionTable } from "@opencode-ai/core/session/sql"
 import { ProviderError } from "@/provider/error"
@@ -37,6 +40,8 @@ import { isMedia } from "@/util/media"
 import type { SystemError } from "bun"
 import type { Provider } from "@/provider/provider"
 import { Effect, Schema } from "effect"
+
+export const node = LayerNode.group([Database.node])
 
 /** Error shape thrown by Bun's fetch() when gzip/br decompression fails mid-stream */
 interface FetchDecompressionError extends Error {
@@ -105,6 +110,9 @@ const part = (row: typeof PartTable.$inferSelect) =>
 
 const older = (row: Cursor) =>
   or(lt(MessageTable.time_created, row.time), and(eq(MessageTable.time_created, row.time), lt(MessageTable.id, row.id)))
+
+const newer = (row: Cursor) =>
+  or(gt(MessageTable.time_created, row.time), and(eq(MessageTable.time_created, row.time), gt(MessageTable.id, row.id)))
 
 function hydrate(db: Database.Interface["db"], rows: (typeof MessageTable.$inferSelect)[]) {
   const ids = rows.map((row) => row.id)
@@ -437,17 +445,26 @@ export const page = Effect.fn("MessageV2.page")(function* (input: {
   sessionID: SessionID
   limit: number
   before?: string
+  after?: string
 }) {
   const { db } = yield* Database.Service
+  if (input.before && input.after)
+    throw new Error("page: only one of `before` or `after` may be provided")
   const before = input.before ? cursor.decode(input.before) : undefined
+  const after = input.after ? cursor.decode(input.after) : undefined
   const where = before
     ? and(eq(MessageTable.session_id, input.sessionID), older(before))
-    : eq(MessageTable.session_id, input.sessionID)
+    : after
+      ? and(eq(MessageTable.session_id, input.sessionID), newer(after))
+      : eq(MessageTable.session_id, input.sessionID)
   const rows = yield* db
     .select()
     .from(MessageTable)
     .where(where)
-    .orderBy(desc(MessageTable.time_created), desc(MessageTable.id))
+    .orderBy(
+      after ? asc(MessageTable.time_created) : desc(MessageTable.time_created),
+      after ? asc(MessageTable.id) : desc(MessageTable.id),
+    )
     .limit(input.limit + 1)
     .all()
     .pipe(Effect.orDie)
@@ -468,12 +485,12 @@ export const page = Effect.fn("MessageV2.page")(function* (input: {
   const more = rows.length > input.limit
   const slice = more ? rows.slice(0, input.limit) : rows
   const items = yield* hydrate(db, slice)
-  items.reverse()
-  const tail = slice.at(-1)
+  if (!after) items.reverse()
+  const cursorRow = slice.at(-1)
   return {
     items,
     more,
-    cursor: more && tail ? cursor.encode({ id: tail.id, time: tail.time_created }) : undefined,
+    cursor: more && cursorRow ? cursor.encode({ id: cursorRow.id, time: cursorRow.time_created }) : undefined,
   }
 })
 

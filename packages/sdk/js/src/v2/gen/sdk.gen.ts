@@ -353,6 +353,10 @@ import type {
   V2SessionQuestionRejectResponses,
   V2SessionQuestionReplyErrors,
   V2SessionQuestionReplyResponses,
+  V2SessionSwitchAgentErrors,
+  V2SessionSwitchAgentResponses,
+  V2SessionSwitchModelErrors,
+  V2SessionSwitchModelResponses,
   V2SessionWaitErrors,
   V2SessionWaitResponses,
   V2SkillListErrors,
@@ -3354,6 +3358,7 @@ export class Session2 extends HeyApiClient {
       path?: string
       roots?: boolean | "true" | "false"
       start?: number
+      cursor?: string
       search?: string
       limit?: number
     },
@@ -3370,6 +3375,7 @@ export class Session2 extends HeyApiClient {
             { in: "query", key: "path" },
             { in: "query", key: "roots" },
             { in: "query", key: "start" },
+            { in: "query", key: "cursor" },
             { in: "query", key: "search" },
             { in: "query", key: "limit" },
           ],
@@ -3691,6 +3697,7 @@ export class Session2 extends HeyApiClient {
       workspace?: string
       limit?: number
       before?: string
+      after?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3704,6 +3711,7 @@ export class Session2 extends HeyApiClient {
             { in: "query", key: "workspace" },
             { in: "query", key: "limit" },
             { in: "query", key: "before" },
+            { in: "query", key: "after" },
           ],
         },
       ],
@@ -5338,6 +5346,88 @@ export class Session3 extends HeyApiClient {
   }
 
   /**
+   * Switch session agent
+   *
+   * Switch the agent used by subsequent session activity.
+   */
+  public switchAgent<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      agent?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "body", key: "agent" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      V2SessionSwitchAgentResponses,
+      V2SessionSwitchAgentErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/agent",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Switch session model
+   *
+   * Switch the model used by subsequent session activity.
+   */
+  public switchModel<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      model?: {
+        id: string
+        providerID: string
+        variant?: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "body", key: "model" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      V2SessionSwitchModelResponses,
+      V2SessionSwitchModelErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/model",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * Send message
    *
    * Durably admit one session input and schedule agent-loop execution unless resume is false.
@@ -6157,22 +6247,12 @@ export class Event2 extends HeyApiClient {
   /**
    * Subscribe to events
    *
-   * Subscribe to native event payloads for a location.
+   * Subscribe to native event payloads for the server.
    */
-  public subscribe<ThrowOnError extends boolean = false>(
-    parameters?: {
-      location?: {
-        directory?: string
-        workspace?: string
-      }
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }])
+  public subscribe<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).sse.get<V2EventSubscribeResponses, V2EventSubscribeErrors, ThrowOnError>({
       url: "/api/event",
       ...options,
-      ...params,
     })
   }
 }

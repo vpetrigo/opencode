@@ -138,7 +138,7 @@ export function DialogSessionList() {
       .map((x) => x.id)
   }
 
-  const [browseOrder] = createSignal<string[]>(orderByRecency(sync.data.session))
+  const browseOrder = createMemo(() => orderByRecency(sync.data.session))
 
   const quickSwitchHint = createMemo(() => {
     const first = quickSwitch1()
@@ -218,10 +218,16 @@ export function DialogSessionList() {
       title="Sessions"
       options={options()}
       skipFilter={true}
+      wrap={false}
       current={currentSessionID()}
       onFilter={setSearch}
-      onMove={() => {
+      onMove={(option) => {
         setToDelete(undefined)
+        // Load more when near end of list
+        const index = browseOrder().indexOf(option.value)
+        if (index >= browseOrder().length - 10 && sync.session.hasMore()) {
+          sync.session.loadMore()
+        }
       }}
       onSelect={(option) => {
         route.navigate({

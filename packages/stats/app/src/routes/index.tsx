@@ -21,12 +21,12 @@ import {
   type TokenCostEntry,
   type UsagePoint,
 } from "@opencode-ai/stats-core/domain/home"
-import { runtime } from "@opencode-ai/stats-core/runtime"
 import { createAsync, query } from "@solidjs/router"
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js"
 import { getRequestEvent } from "solid-js/web"
 import type { FeatureCollection, GeometryObject, GeoJsonProperties } from "geojson"
 import type { GeometryCollection, Topology } from "topojson-specification"
+import { runStatsEffect } from "../stats-runtime"
 import { findModelCatalogEntry, getModelCatalog, type ModelCatalog } from "./model-catalog"
 import {
   applyThemePreference,
@@ -109,7 +109,7 @@ const worldBorderPath = worldPath(mesh(worldTopology, worldCountryGeometries, (a
 
 const getData = query(async () => {
   "use server"
-  return runtime.runPromise(getStatsHomeData())
+  return runStatsEffect(getStatsHomeData())
 }, "getStatsHomeData")
 
 export default function StatsHome() {
@@ -1450,9 +1450,7 @@ function formatCountryName(country: string) {
 }
 
 function formatGeoTokens(value: number) {
-  if (value >= 1) return formatTrillions(value)
-  if (value >= 0.001) return `${Number((value * 1000).toFixed(value >= 0.01 ? 0 : 1))}B`
-  return `${Math.round(value * 1_000_000)}M`
+  return formatTrillions(value)
 }
 
 function formatGeoShare(value: number) {
@@ -1508,6 +1506,9 @@ function formatMarketMobileDate(label: string) {
 }
 
 function formatTrillions(value: number) {
+  if (value === 0) return "0"
+  if (value < 0.001) return `${Number((value * 1_000_000).toFixed(value >= 0.00001 ? 0 : 1))}M`
+  if (value < 1) return `${Number((value * 1_000).toFixed(value >= 0.01 ? 0 : 1))}B`
   return `${value.toFixed(value >= 10 ? 0 : 1)}T`
 }
 
