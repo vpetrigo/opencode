@@ -3373,6 +3373,7 @@ export class Session2 extends HeyApiClient {
       path?: string
       roots?: boolean | "true" | "false"
       start?: number
+      cursor?: string
       search?: string
       limit?: number
     },
@@ -3389,6 +3390,7 @@ export class Session2 extends HeyApiClient {
             { in: "query", key: "path" },
             { in: "query", key: "roots" },
             { in: "query", key: "start" },
+            { in: "query", key: "cursor" },
             { in: "query", key: "search" },
             { in: "query", key: "limit" },
           ],

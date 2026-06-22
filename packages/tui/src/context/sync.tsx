@@ -28,7 +28,7 @@ import { useTuiStartup } from "./runtime"
 import { createSimpleContext } from "./helper"
 import { useExit } from "./exit"
 import { useArgs } from "./args"
-import { batch, onMount } from "solid-js"
+import { batch, createSignal, onMount } from "solid-js"
 import path from "path"
 import { useKV } from "./kv"
 import { usePermission } from "./permission"
@@ -183,10 +183,26 @@ export const {
       }
     }
 
-    function listSessions() {
+    const [sessionCursor, setSessionCursor] = createSignal<number | undefined>()
+    const [sessionHasMore, setSessionHasMore] = createSignal(true)
+
+    function listSessions(cursor?: number) {
       return sdk.client.session
-        .list({ start: Date.now() - 30 * 24 * 60 * 60 * 1000, ...sessionListQuery() })
-        .then((x) => (x.data ?? []).toSorted((a, b) => a.id.localeCompare(b.id)))
+        .list({ cursor: cursor?.toString(), limit: 50, ...sessionListQuery() })
+        .then((x) => {
+          const sessions = x.data ?? []
+          if (sessions.length < 50) setSessionHasMore(false)
+          if (sessions.length > 0) {
+            setSessionCursor(sessions[sessions.length - 1].time.updated)
+          }
+          return sessions.toSorted((a, b) => a.id.localeCompare(b.id))
+        })
+    }
+
+    function loadMoreSessions() {
+      const cursor = sessionCursor()
+      if (!cursor || !sessionHasMore()) return Promise.resolve([])
+      return listSessions(cursor)
     }
 
     event.subscribe((event, { directory, workspace }) => {
@@ -596,10 +612,19 @@ export const {
         query() {
           return sessionListQuery()
         },
-        async refresh() {
-          const list = await listSessions()
-          setStore("session", reconcile(list))
+        refresh: () => {
+          setSessionCursor(undefined)
+          setSessionHasMore(true)
+          return listSessions().then((sessions) => {
+            setStore("session", sessions)
+          })
         },
+        loadMore: () => loadMoreSessions().then((sessions) => {
+          if (sessions.length > 0) {
+            setStore("session", (prev) => [...prev, ...sessions].toSorted((a, b) => a.id.localeCompare(b.id)))
+          }
+        }),
+        hasMore: sessionHasMore,
         status(sessionID: string) {
           const session = result.session.get(sessionID)
           if (!session) return "idle"
