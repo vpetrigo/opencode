@@ -1005,7 +1005,7 @@ function listByProject(
     .select()
     .from(SessionTable)
     .where(and(...conditions))
-    .orderBy(desc(SessionTable.time_updated))
+    .orderBy(desc(SessionTable.time_updated), desc(SessionTable.id))
     .limit(limit)
     .all()
     .pipe(
