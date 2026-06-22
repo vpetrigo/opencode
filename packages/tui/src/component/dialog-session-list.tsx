@@ -277,8 +277,13 @@ export function DialogSessionList() {
       preserveSelection={true}
       current={currentSessionID()}
       onFilter={setSearch}
-      onMove={() => {
+      onMove={(option) => {
         setToDelete(undefined)
+        // Load more when near end of list
+        const index = browseOrder().indexOf(option.value)
+        if (index >= browseOrder().length - 10 && sync.session.hasMore()) {
+          sync.session.loadMore()
+        }
       }}
       onSelect={(option) => {
         route.navigate({
