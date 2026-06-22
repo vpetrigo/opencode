@@ -218,6 +218,7 @@ export function DialogSessionList() {
       title="Sessions"
       options={options()}
       skipFilter={true}
+      wrap={false}
       current={currentSessionID()}
       onFilter={setSearch}
       onMove={(option) => {
