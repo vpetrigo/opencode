@@ -11,7 +11,7 @@ on:
       patch_branch:
         description: Fork patch branch to merge
         required: true
-        default: issue/7380
+        default: session-list-pagination
         type: string
       release_name:
         description: Optional release/tag name override
