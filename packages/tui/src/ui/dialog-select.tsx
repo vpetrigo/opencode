@@ -36,6 +36,7 @@ export interface DialogSelectProps<T> {
   renderFilter?: boolean
   locked?: boolean
   preserveSelection?: boolean
+  wrap?: boolean
   actions?: {
     command: string
     title: string
@@ -291,8 +292,12 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
     if (props.locked) return
     if (flat().length === 0) return
     let next = store.selected + direction
-    if (next < 0) next = flat().length - 1
-    if (next >= flat().length) next = 0
+    if (props.wrap === false) {
+      if (next < 0 || next >= flat().length) return
+    } else {
+      if (next < 0) next = flat().length - 1
+      if (next >= flat().length) next = 0
+    }
     moveTo(next, true)
   }
 
