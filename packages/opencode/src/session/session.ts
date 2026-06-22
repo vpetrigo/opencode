@@ -310,6 +310,7 @@ export type ListInput = {
   workspaceID?: WorkspaceV2.ID
   roots?: boolean
   start?: number
+  cursor?: number
   search?: string
   limit?: number
 }
@@ -963,6 +964,7 @@ function listByProject(
   input: ListInput & {
     projectID: ProjectV2.ID
     experimentalWorkspaces: boolean
+    cursor?: number
   },
 ) {
   const conditions = [eq(SessionTable.project_id, input.projectID)]
@@ -993,6 +995,9 @@ function listByProject(
   }
   if (input.start) {
     conditions.push(gte(SessionTable.time_updated, input.start))
+  }
+  if (input.cursor) {
+    conditions.push(lt(SessionTable.time_updated, input.cursor))
   }
   if (input.search) {
     conditions.push(like(SessionTable.title, `%${input.search}%`))
