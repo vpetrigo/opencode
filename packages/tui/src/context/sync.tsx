@@ -179,6 +179,7 @@ export const {
 
     const [sessionCursor, setSessionCursor] = createSignal<number | undefined>()
     const [sessionHasMore, setSessionHasMore] = createSignal(true)
+    const [sessionLoadingMore, setSessionLoadingMore] = createSignal(false)
 
     function listSessions(cursor?: number) {
       return sdk.client.session
@@ -195,8 +196,9 @@ export const {
 
     function loadMoreSessions() {
       const cursor = sessionCursor()
-      if (!cursor || !sessionHasMore()) return Promise.resolve([])
-      return listSessions(cursor)
+      if (!cursor || !sessionHasMore() || sessionLoadingMore()) return Promise.resolve([])
+      setSessionLoadingMore(true)
+      return listSessions(cursor).finally(() => setSessionLoadingMore(false))
     }
 
     event.subscribe((event, { directory, workspace }) => {
@@ -613,7 +615,11 @@ export const {
         },
         loadMore: () => loadMoreSessions().then((sessions) => {
           if (sessions.length > 0) {
-            setStore("session", (prev) => [...prev, ...sessions].toSorted((a, b) => a.id.localeCompare(b.id)))
+            setStore("session", (prev) =>
+              [...new Map([...prev, ...sessions].map((session) => [session.id, session])).values()].toSorted((a, b) =>
+                a.id.localeCompare(b.id),
+              ),
+            )
           }
         }),
         hasMore: sessionHasMore,
