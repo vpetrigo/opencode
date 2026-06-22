@@ -33,6 +33,7 @@ export const ListQuery = Schema.Struct({
   path: Schema.optional(Schema.String),
   roots: Schema.optional(QueryBoolean),
   start: Schema.optional(Schema.NumberFromString),
+  cursor: Schema.optional(Schema.NumberFromString),
   search: Schema.optional(Schema.String),
   limit: Schema.optional(Schema.NumberFromString),
 })
