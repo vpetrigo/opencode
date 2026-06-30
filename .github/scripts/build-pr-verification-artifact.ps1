@@ -13,31 +13,28 @@ function Sanitize-Tag([string]$value) {
 git config user.name 'github-actions[bot]'
 git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-git remote add upstream $env:UPSTREAM_REPO 2>$null
-git fetch upstream '+refs/heads/*:refs/remotes/upstream/*' '+refs/tags/*:refs/tags/*' --force
+git fetch origin "+refs/heads/$($env:BASE_BRANCH):refs/remotes/origin/$($env:BASE_BRANCH)" --force
 git fetch origin "+refs/heads/$($env:PATCH_BRANCH):refs/remotes/origin/$($env:PATCH_BRANCH)" --force
 
-$safeRef = Sanitize-Tag $env:UPSTREAM_REF
+$safeRef = Sanitize-Tag $env:BASE_BRANCH
 $releaseName = if (-not [string]::IsNullOrWhiteSpace($env:RELEASE_NAME_INPUT)) {
   $env:RELEASE_NAME_INPUT
-} elseif ($env:UPSTREAM_REF -eq 'dev') {
-  "pr-7380-dev-$($env:GITHUB_RUN_NUMBER)"
 } else {
-  "pr-7380-$safeRef"
+  "pr-7380-$safeRef-$($env:GITHUB_RUN_NUMBER)"
 }
 $tagName = Sanitize-Tag $releaseName
 if (-not $tagName.StartsWith('pr-7380-')) {
   $tagName = "pr-7380-$safeRef"
 }
 
-$baseRef = if ($env:UPSTREAM_REF -eq 'dev') { 'refs/remotes/upstream/dev' } else { "refs/tags/$($env:UPSTREAM_REF)" }
+$baseRef = "refs/remotes/origin/$($env:BASE_BRANCH)"
 git rev-parse --verify $baseRef
 git rev-parse --verify "refs/remotes/origin/$($env:PATCH_BRANCH)"
 
 $baseCommit = git rev-parse $baseRef
 $patchCommit = git rev-parse "refs/remotes/origin/$($env:PATCH_BRANCH)"
 git checkout -b "generated-$tagName" $baseRef
-git merge --no-edit "refs/remotes/origin/$($env:PATCH_BRANCH)"
+git merge --ff-only "refs/remotes/origin/$($env:PATCH_BRANCH)"
 $mergeCommit = git rev-parse HEAD
 
 # TODO: remove that once opentui-spinner is fixed
@@ -65,12 +62,11 @@ Compress-Archive -Path (Join-Path $binaryRoot '*') -DestinationPath $zipPath -Fo
 $buildInfo = @"
 ## Build info for $($buildOutput.Name)
 
-- Official upstream ref: $env:UPSTREAM_REF
-- Source repository: $env:UPSTREAM_REPO
-- Official base commit: $baseCommit
+- Base branch: $env:BASE_BRANCH
+- Base commit: $baseCommit
 - Patch branch: $env:PATCH_BRANCH
 - Patch commit: $patchCommit
-- Generated merge commit: $mergeCommit
+- Rebased commit: $mergeCommit
 - Built at: $(Get-Date -AsUTC -Format 'yyyy-MM-ddTHH:mm:ssZ')
 - Runner: $env:RUNNER_OS
 - Build command: bun ./packages/opencode/script/build.ts --single

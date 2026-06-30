@@ -10,13 +10,11 @@ function Sanitize-Tag([string]$value) {
   return $sanitized
 }
 
-$safeRef = Sanitize-Tag $env:UPSTREAM_REF
+$safeRef = Sanitize-Tag $env:BASE_BRANCH
 $releaseName = if (-not [string]::IsNullOrWhiteSpace($env:RELEASE_NAME_INPUT)) {
   $env:RELEASE_NAME_INPUT
-} elseif ($env:UPSTREAM_REF -eq 'dev') {
-  "pr-7380-dev-$($env:GITHUB_RUN_NUMBER)"
 } else {
-  "pr-7380-$safeRef"
+  "pr-7380-$safeRef-$($env:GITHUB_RUN_NUMBER)"
 }
 $tagName = Sanitize-Tag $releaseName
 if (-not $tagName.StartsWith('pr-7380-')) {
@@ -39,11 +37,11 @@ $buildInfo = (Get-ChildItem -Path $artifactRoot -Filter '*.build-info.md' -File 
 }) -join "`n`n"
 
 $releaseNotes = @"
-# Unofficial PR #26861 verification build for OpenCode $($env:UPSTREAM_REF)
+# Unofficial PR #7380 verification build for OpenCode $($env:BASE_BRANCH)
 
-This is an unofficial verification build for testing PR #26861.
+This is an unofficial verification build for testing PR #7380 plus '$($env:PATCH_BRANCH)'.
 
-It is based on official OpenCode '$($env:UPSTREAM_REF)' plus the lazy-scroll message loading changes from '$($env:PATCH_BRANCH)'.
+It is based on '$($env:BASE_BRANCH)' with '$($env:PATCH_BRANCH)' rebased on top.
 
 This is not an official OpenCode release.
 
@@ -52,6 +50,7 @@ Please test:
 - scrolling near the bottom loads newer messages
 - old messages no longer disappear during long sessions
 - Timeline dialog loads the complete session
+- the session switcher loads older sessions without duplicates
 
 Please report:
 - OS
@@ -67,13 +66,12 @@ $buildInfo
 
 git config user.name 'github-actions[bot]'
 git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-git remote add upstream $env:UPSTREAM_REPO 2>$null
-git fetch upstream '+refs/heads/*:refs/remotes/upstream/*' '+refs/tags/*:refs/tags/*' --force
+git fetch origin "+refs/heads/$($env:BASE_BRANCH):refs/remotes/origin/$($env:BASE_BRANCH)" --force
 git fetch origin "+refs/heads/$($env:PATCH_BRANCH):refs/remotes/origin/$($env:PATCH_BRANCH)" --force
 
-$baseRef = if ($env:UPSTREAM_REF -eq 'dev') { 'refs/remotes/upstream/dev' } else { "refs/tags/$($env:UPSTREAM_REF)" }
+$baseRef = "refs/remotes/origin/$($env:BASE_BRANCH)"
 git checkout -b "release-$tagName" $baseRef
-git merge --no-edit "refs/remotes/origin/$($env:PATCH_BRANCH)"
+git merge --ff-only "refs/remotes/origin/$($env:PATCH_BRANCH)"
 
 git tag -f $tagName
 git push origin $tagName --force

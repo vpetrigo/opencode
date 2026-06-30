@@ -3,13 +3,13 @@ name: Build PR verification release
 on:
   workflow_dispatch:
     inputs:
-      upstream_ref:
-        description: Official upstream ref like vX.Y.Z or dev
+      base_branch:
+        description: Base branch to rebase onto
         required: true
-        default: dev
+        default: issue/7380
         type: string
       patch_branch:
-        description: Fork patch branch to merge
+        description: Fork patch branch to rebase and build
         required: true
         default: session-list-pagination
         type: string
@@ -28,8 +28,36 @@ permissions:
   contents: write
 
 jobs:
+  prepare:
+    name: Rebase patch branch
+    runs-on: ubuntu-latest
+    env:
+      BASE_BRANCH: ${{ inputs.base_branch }}
+      PATCH_BRANCH: ${{ inputs.patch_branch }}
+    steps:
+      - name: Checkout fork automation branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Git Committer
+        uses: ./.github/actions/setup-git-committer
+        with:
+          opencode-app-id: ${{ vars.OPENCODE_APP_ID }}
+          opencode-app-secret: ${{ secrets.OPENCODE_APP_SECRET }}
+
+      - name: Rebase and push patch branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "+refs/heads/${BASE_BRANCH}:refs/remotes/origin/${BASE_BRANCH}" "+refs/heads/${PATCH_BRANCH}:refs/remotes/origin/${PATCH_BRANCH}"
+          git checkout -B "${PATCH_BRANCH}" "origin/${PATCH_BRANCH}"
+          git rebase "origin/${BASE_BRANCH}"
+          git push origin "HEAD:${PATCH_BRANCH}" --force-with-lease
+
   build:
     name: Build ${{ matrix.name }}
+    needs: prepare
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -40,9 +68,8 @@ jobs:
           - name: linux-x64
             os: ubuntu-latest
     env:
-      UPSTREAM_REPO: https://github.com/anomalyco/opencode.git
+      BASE_BRANCH: ${{ inputs.base_branch }}
       PATCH_BRANCH: ${{ inputs.patch_branch }}
-      UPSTREAM_REF: ${{ inputs.upstream_ref }}
       RELEASE_NAME_INPUT: ${{ inputs.release_name }}
       PRERELEASE: ${{ inputs.prerelease }}
     steps:
@@ -72,8 +99,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     env:
-      UPSTREAM_REPO: https://github.com/anomalyco/opencode.git
-      UPSTREAM_REF: ${{ inputs.upstream_ref }}
+      BASE_BRANCH: ${{ inputs.base_branch }}
       PATCH_BRANCH: ${{ inputs.patch_branch }}
       RELEASE_NAME_INPUT: ${{ inputs.release_name }}
       PRERELEASE: ${{ inputs.prerelease }}

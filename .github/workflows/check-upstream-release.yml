@@ -46,4 +46,4 @@ jobs:
             exit 0
           }
 
-          gh workflow run 'build-pr-verification-release.yml' --repo $env:GITHUB_REPOSITORY --ref $env:GITHUB_REF_NAME -f upstream_ref=$release -f patch_branch=session-list-pagination -f release_name=$tagName -f prerelease=true
+          gh workflow run 'build-pr-verification-release.yml' --repo $env:GITHUB_REPOSITORY --ref $env:GITHUB_REF_NAME -f base_branch=issue/7380 -f patch_branch=session-list-pagination -f release_name=$tagName -f prerelease=true
