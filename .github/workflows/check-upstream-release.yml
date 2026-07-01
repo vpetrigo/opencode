@@ -24,6 +24,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
 
           function Sanitize-Tag([string]$value) {
             $sanitized = $value -replace '[^A-Za-z0-9._-]', '-'
@@ -46,4 +47,4 @@ jobs:
             exit 0
           }
 
-          gh workflow run 'build-pr-verification-release.yml' --repo $env:GITHUB_REPOSITORY --ref $env:GITHUB_REF_NAME -f base_branch=issue/7380 -f patch_branch=session-list-pagination -f release_name=$tagName -f prerelease=true
+          gh workflow run 'build-pr-verification-release.yml' --repo $env:GITHUB_REPOSITORY --ref $env:GITHUB_REF_NAME -f upstream_tag=$release -f base_branch=issue-7380-replay -f patch_branch=session-list-pagination-replay -f release_name=$tagName -f prerelease=true

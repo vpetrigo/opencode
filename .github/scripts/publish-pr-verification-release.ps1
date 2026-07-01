@@ -1,4 +1,5 @@
 $ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $true
 
 function Sanitize-Tag([string]$value) {
   $sanitized = $value -replace '[^A-Za-z0-9._-]', '-'
@@ -37,11 +38,15 @@ $buildInfo = (Get-ChildItem -Path $artifactRoot -Filter '*.build-info.md' -File 
 }) -join "`n`n"
 
 $releaseNotes = @"
-# Unofficial PR #7380 verification build for OpenCode $($env:BASE_BRANCH)
+# Unofficial PR #7380 verification build for OpenCode $($env:UPSTREAM_TAG)
 
-This is an unofficial verification build for testing PR #7380 plus '$($env:PATCH_BRANCH)'.
+This is an unofficial verification build based on OpenCode '$($env:UPSTREAM_TAG)'.
 
-It is based on '$($env:BASE_BRANCH)' with '$($env:PATCH_BRANCH)' rebased on top.
+It replays '$($env:BASE_BRANCH)' and '$($env:PATCH_BRANCH)' on top of that tag.
+
+Replay strategy: cherry-pick -X theirs.
+
+Source SHA: $($env:SOURCE_SHA)
 
 This is not an official OpenCode release.
 
@@ -66,14 +71,19 @@ $buildInfo
 
 git config user.name 'github-actions[bot]'
 git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-git fetch origin "+refs/heads/$($env:BASE_BRANCH):refs/remotes/origin/$($env:BASE_BRANCH)" --force
-git fetch origin "+refs/heads/$($env:PATCH_BRANCH):refs/remotes/origin/$($env:PATCH_BRANCH)" --force
 
-$baseRef = "refs/remotes/origin/$($env:BASE_BRANCH)"
-git checkout -b "release-$tagName" $baseRef
-git merge --ff-only "refs/remotes/origin/$($env:PATCH_BRANCH)"
+git fetch origin "+refs/heads/$($env:SOURCE_REF):refs/remotes/origin/$($env:SOURCE_REF)" --force
+git checkout --detach $env:SOURCE_SHA
+$sourceRefCommit = git rev-parse --verify "refs/remotes/origin/$($env:SOURCE_REF)"
+if ($sourceRefCommit -ne $env:SOURCE_SHA) {
+  throw "Expected $($env:SOURCE_REF) $($env:SOURCE_SHA), got $sourceRefCommit."
+}
+$headCommit = git rev-parse HEAD
+if ($headCommit -ne $env:SOURCE_SHA) {
+  throw "Expected HEAD $($env:SOURCE_SHA), got $headCommit."
+}
 
-git tag -f $tagName
+git tag -f $tagName $env:SOURCE_SHA
 git push origin $tagName --force
 
 $releaseArgs = @(
