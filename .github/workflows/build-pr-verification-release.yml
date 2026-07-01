@@ -11,12 +11,12 @@ on:
       base_branch:
         description: Branch containing issue/7380 fixes to replay
         required: true
-        default: issue-7380-replay
+        default: issue/7380
         type: string
       patch_branch:
         description: Branch containing session list pagination fixes to replay
         required: true
-        default: session-list-pagination-replay
+        default: session-list-pagination
         type: string
       release_name:
         description: Optional release/tag name override
