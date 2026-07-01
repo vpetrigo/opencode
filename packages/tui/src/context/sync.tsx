@@ -613,7 +613,7 @@ export const {
           const olderCursor = (messages.response?.headers.get("x-next-cursor") as string | null | undefined) ?? null
           setStore(
             produce((draft) => {
-              const match = Binary.search(draft.session, sessionID, (s) => s.id)
+              const match = search(draft.session, sessionID, (s) => s.id)
               if (match.found) draft.session[match.index] = session.data!
               if (!match.found) draft.session.splice(match.index, 0, session.data!)
               draft.todo[sessionID] = todo.data ?? []
