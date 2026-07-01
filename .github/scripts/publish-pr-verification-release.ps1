@@ -11,15 +11,18 @@ function Sanitize-Tag([string]$value) {
   return $sanitized
 }
 
-$safeRef = Sanitize-Tag $env:BASE_BRANCH
 $releaseName = if (-not [string]::IsNullOrWhiteSpace($env:RELEASE_NAME_INPUT)) {
   $env:RELEASE_NAME_INPUT
+} elseif (-not [string]::IsNullOrWhiteSpace($env:OPENCODE_VERSION)) {
+  "pr-7380-replay-$($env:OPENCODE_VERSION)"
+} elseif (-not [string]::IsNullOrWhiteSpace($env:UPSTREAM_TAG)) {
+  "pr-7380-replay-$(Sanitize-Tag $env:UPSTREAM_TAG)"
 } else {
-  "pr-7380-$safeRef-$($env:GITHUB_RUN_NUMBER)"
+  "pr-7380-replay-$($env:GITHUB_RUN_NUMBER)"
 }
 $tagName = Sanitize-Tag $releaseName
 if (-not $tagName.StartsWith('pr-7380-')) {
-  $tagName = "pr-7380-$safeRef"
+  $tagName = "pr-7380-replay-$tagName"
 }
 
 $artifactRoot = Join-Path $env:RUNNER_TEMP 'opencode-verification-artifacts'
