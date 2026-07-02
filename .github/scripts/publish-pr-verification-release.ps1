@@ -13,10 +13,10 @@ function Sanitize-Tag([string]$value) {
 
 $releaseName = if (-not [string]::IsNullOrWhiteSpace($env:RELEASE_NAME_INPUT)) {
   $env:RELEASE_NAME_INPUT
-} elseif (-not [string]::IsNullOrWhiteSpace($env:OPENCODE_VERSION)) {
-  "pr-7380-replay-$($env:OPENCODE_VERSION)"
 } elseif (-not [string]::IsNullOrWhiteSpace($env:UPSTREAM_TAG)) {
   "pr-7380-replay-$(Sanitize-Tag $env:UPSTREAM_TAG)"
+} elseif (-not [string]::IsNullOrWhiteSpace($env:OPENCODE_VERSION)) {
+  "pr-7380-replay-$($env:OPENCODE_VERSION)"
 } else {
   "pr-7380-replay-$($env:GITHUB_RUN_NUMBER)"
 }
