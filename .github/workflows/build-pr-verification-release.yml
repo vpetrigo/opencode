@@ -52,7 +52,7 @@ jobs:
       PATCH_BRANCH: ${{ inputs.patch_branch }}
     steps:
       - name: Checkout fork automation branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ github.token }}
@@ -187,7 +187,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout fork automation branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -202,7 +202,7 @@ jobs:
           echo "OPENCODE_VERSION=${{ needs.prepare.outputs.version }}-pr.7380.${{ github.run_number }}" >> "$GITHUB_ENV"
 
       - name: Download verification artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: verification-*
           path: ${{ runner.temp }}/opencode-verification-artifacts
