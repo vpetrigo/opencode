@@ -106,15 +106,6 @@ jobs:
             git cherry-pick -X theirs $session_commits
           fi
 
-          # opentui-spinner 0.0.7 reports an OpenCode version and fails on startup in these verification builds.
-          perl -0pi -e 's/("opentui-spinner":\s*")[^"]+"/${1}0.0.6"/' package.json
-          if git diff --quiet -- package.json; then
-            :
-          else
-            git add package.json
-            git commit -m 'fix: normalize opentui-spinner version'
-          fi
-
           source_sha=$(git rev-parse HEAD)
           git push origin "HEAD:refs/heads/${source_ref}" --force
 
