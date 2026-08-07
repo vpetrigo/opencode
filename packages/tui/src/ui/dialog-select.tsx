@@ -293,7 +293,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
     if (flat().length === 0) return
     let next = store.selected + direction
     if (props.wrap === false) {
-      if (next < 0 || next >= flat().length) return
+      next = Math.max(0, Math.min(flat().length - 1, next))
     } else {
       if (next < 0) next = flat().length - 1
       if (next >= flat().length) next = 0

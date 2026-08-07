@@ -55,14 +55,36 @@ export function DialogSessionList() {
   const [toDelete, setToDelete] = createSignal<string>()
   const [deleted, setDeleted] = createSignal(new Set<string>())
   const [search, setSearch] = createDebouncedSignal("", 150)
+  const [browseCursor, setBrowseCursor] = createSignal<string>()
+  const [browseMore, setBrowseMore] = createSignal<typeof sync.data.session>([])
+  const [browseLoading, setBrowseLoading] = createSignal(false)
   const deleteHint = useCommandShortcut("session.delete")
   const quickSwitch1 = useCommandShortcut("session.quick_switch.1")
   const quickSwitch9 = useCommandShortcut("session.quick_switch.9")
 
   const [browseResults, { refetch: refetchBrowse }] = createResource(
     () => sync.session.query(),
-    (filter) => loadDialogSessionList({ filter, list: (query) => sdk.client.session.list(query) }),
+    async (filter) => {
+      setBrowseCursor(undefined)
+      setBrowseMore([])
+      const query = createDialogSessionListQuery({ filter })
+      const result = await sdk.client.session.list(query)
+      setBrowseCursor(result.response?.headers.get("x-next-cursor") ?? undefined)
+      return result.data
+    },
   )
+  async function loadBrowseMore() {
+    const cursor = browseCursor()
+    if (!cursor || browseLoading()) return
+    setBrowseLoading(true)
+    try {
+      const result = await sdk.client.session.list({ ...createDialogSessionListQuery({ filter: sync.session.query() }), cursor })
+      setBrowseMore((current) => [...current, ...(result.data ?? [])])
+      setBrowseCursor(result.response?.headers.get("x-next-cursor") ?? undefined)
+    } finally {
+      setBrowseLoading(false)
+    }
+  }
   const [searchResults, { refetch }] = createResource(
     () => ({ query: search(), filter: sync.session.query() }),
     (input) => {
@@ -77,7 +99,7 @@ export function DialogSessionList() {
 
   const currentSessionID = createMemo(() => (route.data.type === "session" ? route.data.sessionID : undefined))
   const sessions = createMemo(() => {
-    const result = searchResults() ?? browseResults() ?? sync.data.session
+    const result = searchResults() ?? (browseResults() ? [...browseResults()!, ...browseMore()] : sync.data.session)
     const synced = new Map(sync.data.session.map((session) => [session.id, session]))
     const ids = new Set(result.map((session) => session.id))
     const extra = [currentSessionID(), ...local.session.pinned()].flatMap((id) => {
@@ -192,7 +214,7 @@ export function DialogSessionList() {
       .map((x) => x.id)
   }
 
-  const browseOrder = createMemo(() => orderByRecency(browseResults() ?? sync.data.session))
+  const browseOrder = createMemo(() => orderByRecency(sessions()))
 
   const quickSwitchHint = createMemo(() => {
     const first = quickSwitch1()
@@ -282,8 +304,8 @@ export function DialogSessionList() {
         setToDelete(undefined)
         // Load more when near end of list
         const index = browseOrder().indexOf(option.value)
-        if (index >= browseOrder().length - 10 && sync.session.hasMore()) {
-          sync.session.loadMore()
+        if (index >= browseOrder().length - 10) {
+          void loadBrowseMore()
         }
       }}
       onSelect={(option) => {
