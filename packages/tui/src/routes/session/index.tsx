@@ -429,6 +429,8 @@ export function Session() {
 
   // Pagination + asymmetric windowing
   const WINDOW_CAP = 200
+  const NEAR_TOP_THRESHOLD = 5
+  const NEAR_BOTTOM_THRESHOLD = 5
 
   async function maybeLoadOlderMessages() {
     if (!scroll || scroll.isDestroyed) return
