@@ -65,7 +65,11 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
 
     const list = Effect.fn("SessionHttpApi.list")(function* (ctx: { query: typeof ListQuery.Type }) {
       const directory = ctx.query.directory ? yield* InstanceState.directory : undefined
-      return yield* session.list({
+      if (ctx.query.cursor) {
+        if (Option.isNone(Session.decodeSessionCursor(ctx.query.cursor))) return yield* new HttpApiError.BadRequest({})
+      }
+      const limit = ctx.query.limit ?? 100
+      const rows = yield* session.list({
         directory: ctx.query.scope === "project" ? undefined : directory,
         scope: ctx.query.scope,
         path: ctx.query.path,
@@ -73,7 +77,17 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
         start: ctx.query.start,
         cursor: ctx.query.cursor,
         search: ctx.query.search,
-        limit: ctx.query.limit,
+        limit: limit + 1,
+      })
+      if (rows.length <= limit) return rows
+      const page = rows.slice(0, limit)
+      const last = page[page.length - 1]
+      if (!last) return page
+      return HttpServerResponse.jsonUnsafe(page, {
+        headers: {
+          "Access-Control-Expose-Headers": "X-Next-Cursor",
+          "X-Next-Cursor": Session.encodeSessionCursor({ time: last.time.updated, id: last.id }),
+        },
       })
     })
 
