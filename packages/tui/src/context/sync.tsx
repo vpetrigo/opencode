@@ -183,18 +183,19 @@ export const {
       }
     }
 
-    const [sessionCursor, setSessionCursor] = createSignal<number | undefined>()
+    const [sessionCursor, setSessionCursor] = createSignal<string | undefined>()
     const [sessionHasMore, setSessionHasMore] = createSignal(true)
     const [sessionLoadingMore, setSessionLoadingMore] = createSignal(false)
 
-    function listSessions(cursor?: number) {
+    function listSessions(cursor?: string) {
       return sdk.client.session
-        .list({ cursor: cursor?.toString(), limit: 50, ...sessionListQuery() })
+        .list({ cursor, limit: 50, ...sessionListQuery() })
         .then((x) => {
           const sessions = x.data ?? []
           if (sessions.length < 50) setSessionHasMore(false)
           if (sessions.length > 0) {
-            setSessionCursor(sessions[sessions.length - 1].time.updated)
+            const last = sessions[sessions.length - 1]
+            setSessionCursor(Buffer.from(JSON.stringify({ time: last.time.updated, id: last.id })).toString("base64url"))
           }
           return sessions.toSorted((a, b) => a.id.localeCompare(b.id))
         })
