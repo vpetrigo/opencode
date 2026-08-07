@@ -306,10 +306,15 @@ export type ListInput = {
   workspaceID?: WorkspaceV2.ID
   roots?: boolean
   start?: number
-  cursor?: number
+  cursor?: string
   search?: string
   limit?: number
 }
+
+export const SessionCursor = Schema.Struct({
+  time: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+  id: SessionID,
+})
 
 export type GlobalListInput = {
   directory?: string
@@ -560,7 +565,9 @@ const layer: Layer.Layer<
       if (input?.directory) conditions.push(eq(SessionTable.directory, input.directory))
       if (input?.roots) conditions.push(isNull(SessionTable.parent_id))
       if (input?.start) conditions.push(gte(SessionTable.time_updated, input.start))
-      if (input?.cursor) conditions.push(lt(SessionTable.time_updated, input.cursor))
+      if (input?.cursor) {
+        conditions.push(lt(SessionTable.time_updated, input.cursor))
+      }
       if (input?.search) conditions.push(like(SessionTable.title, `%${input.search}%`))
       if (!input?.archived) conditions.push(isNull(SessionTable.time_archived))
 
@@ -955,12 +962,26 @@ const cancelBackgroundJobs = Effect.fn("Session.cancelBackgroundJobs")(function*
   )
 })
 
+export function encodeSessionCursor(cursor: Schema.Schema.Type<typeof SessionCursor>) {
+  return Buffer.from(JSON.stringify(cursor)).toString("base64url")
+}
+
+export function decodeSessionCursor(value: string) {
+  let decoded: unknown
+  try {
+    decoded = JSON.parse(Buffer.from(value, "base64url").toString())
+  } catch {
+    return Option.none<Schema.Schema.Type<typeof SessionCursor>>()
+  }
+  return Schema.decodeUnknownOption(SessionCursor)(decoded)
+}
+
 function listByProject(
   db: Database.Interface["db"],
   input: ListInput & {
     projectID: ProjectV2.ID
     experimentalWorkspaces: boolean
-    cursor?: number
+    cursor?: string
   },
 ) {
   const conditions = [eq(SessionTable.project_id, input.projectID)]
@@ -993,7 +1014,9 @@ function listByProject(
     conditions.push(gte(SessionTable.time_updated, input.start))
   }
   if (input.cursor) {
-    conditions.push(lt(SessionTable.time_updated, input.cursor))
+    const cursor = decodeSessionCursor(input.cursor)
+    if (Option.isNone(cursor)) return Effect.succeed([])
+    conditions.push(or(lt(SessionTable.time_updated, cursor.time), and(eq(SessionTable.time_updated, cursor.time), lt(SessionTable.id, cursor.id)))!)
   }
   if (input.search) {
     conditions.push(like(SessionTable.title, `%${input.search}%`))
