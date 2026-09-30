@@ -28,9 +28,19 @@ on:
         required: false
         default: true
         type: boolean
+      include_v2:
+        description: Include the v2 lildax session-list prototype
+        required: false
+        default: false
+        type: boolean
+      v2_branch:
+        description: Branch containing the v2 prototype commit
+        required: true
+        default: prototype-session-list
+        type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: verification-release-${{ inputs.upstream_tag }}
@@ -40,16 +50,22 @@ jobs:
   prepare:
     name: Prepare source ref
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       source_ref: ${{ steps.prepare.outputs.source_ref }}
       source_sha: ${{ steps.prepare.outputs.source_sha }}
       base_sha: ${{ steps.prepare.outputs.base_sha }}
       patch_sha: ${{ steps.prepare.outputs.patch_sha }}
+      v2_sha: ${{ steps.prepare.outputs.v2_sha }}
       version: ${{ steps.prepare.outputs.version }}
     env:
       UPSTREAM_TAG: ${{ inputs.upstream_tag }}
       BASE_BRANCH: ${{ inputs.base_branch }}
       PATCH_BRANCH: ${{ inputs.patch_branch }}
+      INCLUDE_V2: ${{ inputs.include_v2 }}
+      V2_BRANCH: ${{ inputs.v2_branch }}
+      PRERELEASE: ${{ inputs.prerelease }}
     steps:
       - name: Checkout fork automation branch
         uses: actions/checkout@v7
@@ -74,6 +90,13 @@ jobs:
 
           source_ref="verification-source-$(sanitize "$UPSTREAM_TAG")"
           test -n "$UPSTREAM_TAG"
+          git check-ref-format "refs/heads/${BASE_BRANCH}"
+          git check-ref-format "refs/heads/${PATCH_BRANCH}"
+          git check-ref-format "refs/tags/${UPSTREAM_TAG}"
+          if [ "$INCLUDE_V2" = "true" ]; then
+            test "$PRERELEASE" = "true"
+            git check-ref-format "refs/heads/${V2_BRANCH}"
+          fi
           git fetch origin "+refs/heads/${BASE_BRANCH}:refs/remotes/origin/${BASE_BRANCH}" "+refs/heads/${PATCH_BRANCH}:refs/remotes/origin/${PATCH_BRANCH}"
           base_sha=$(git rev-parse "refs/remotes/origin/${BASE_BRANCH}")
           patch_sha=$(git rev-parse "refs/remotes/origin/${PATCH_BRANCH}")
@@ -106,6 +129,18 @@ jobs:
             git cherry-pick -X theirs $session_commits
           fi
 
+          v2_sha=""
+          if [ "$INCLUDE_V2" = "true" ]; then
+            git fetch origin "+refs/heads/${V2_BRANCH}:refs/remotes/origin/${V2_BRANCH}"
+            v2_sha=$(git rev-parse "refs/remotes/origin/${V2_BRANCH}")
+            git merge-base --is-ancestor "$patch_sha" "$v2_sha"
+            v2_commits=$(git rev-list --reverse --no-merges "${patch_sha}..${v2_sha}")
+            v2_count=$(printf '%s\n' "$v2_commits" | sed '/^$/d' | wc -l)
+            test "$v2_count" -eq 1
+            test -z "$(git rev-list --merges "${patch_sha}..${v2_sha}")"
+            git cherry-pick "$v2_commits"
+          fi
+
           source_sha=$(git rev-parse HEAD)
           git push origin "HEAD:refs/heads/${source_ref}" --force
 
@@ -113,12 +148,15 @@ jobs:
           echo "source_sha=${source_sha}" >> "$GITHUB_OUTPUT"
           echo "base_sha=${base_sha}" >> "$GITHUB_OUTPUT"
           echo "patch_sha=${patch_sha}" >> "$GITHUB_OUTPUT"
+          echo "v2_sha=${v2_sha}" >> "$GITHUB_OUTPUT"
           echo "version=${UPSTREAM_TAG#v}" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build ${{ matrix.name }}
     needs: prepare
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -133,21 +171,31 @@ jobs:
       PATCH_BRANCH: ${{ inputs.patch_branch }}
       RELEASE_NAME_INPUT: ${{ inputs.release_name }}
       PRERELEASE: ${{ inputs.prerelease }}
+      INCLUDE_V2: ${{ inputs.include_v2 }}
+      V2_SHA: ${{ needs.prepare.outputs.v2_sha }}
+      SOURCE_REF: ${{ needs.prepare.outputs.source_ref }}
+      SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+      BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+      PATCH_SHA: ${{ needs.prepare.outputs.patch_sha }}
+      PREPARED_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - name: Checkout fork automation branch
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Export build env
         shell: bash
         run: |
           echo "UPSTREAM_TAG=${UPSTREAM_TAG}" >> "$GITHUB_ENV"
-          echo "SOURCE_REF=${{ needs.prepare.outputs.source_ref }}" >> "$GITHUB_ENV"
-          echo "SOURCE_SHA=${{ needs.prepare.outputs.source_sha }}" >> "$GITHUB_ENV"
-          echo "BASE_SHA=${{ needs.prepare.outputs.base_sha }}" >> "$GITHUB_ENV"
-          echo "PATCH_SHA=${{ needs.prepare.outputs.patch_sha }}" >> "$GITHUB_ENV"
-          echo "OPENCODE_VERSION=${{ needs.prepare.outputs.version }}-pr.7380.${{ github.run_number }}" >> "$GITHUB_ENV"
+          echo "SOURCE_REF=${SOURCE_REF}" >> "$GITHUB_ENV"
+          echo "SOURCE_SHA=${SOURCE_SHA}" >> "$GITHUB_ENV"
+          echo "BASE_SHA=${BASE_SHA}" >> "$GITHUB_ENV"
+          echo "PATCH_SHA=${PATCH_SHA}" >> "$GITHUB_ENV"
+          echo "INCLUDE_V2=${INCLUDE_V2}" >> "$GITHUB_ENV"
+          echo "V2_SHA=${V2_SHA}" >> "$GITHUB_ENV"
+          echo "OPENCODE_VERSION=${PREPARED_VERSION}-pr.7380.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -168,6 +216,8 @@ jobs:
   publish:
     name: Publish release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     needs: [prepare, build]
     env:
       UPSTREAM_TAG: ${{ inputs.upstream_tag }}
@@ -175,6 +225,13 @@ jobs:
       PATCH_BRANCH: ${{ inputs.patch_branch }}
       RELEASE_NAME_INPUT: ${{ inputs.release_name }}
       PRERELEASE: ${{ inputs.prerelease }}
+      INCLUDE_V2: ${{ inputs.include_v2 }}
+      V2_SHA: ${{ needs.prepare.outputs.v2_sha }}
+      SOURCE_REF: ${{ needs.prepare.outputs.source_ref }}
+      SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+      BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+      PATCH_SHA: ${{ needs.prepare.outputs.patch_sha }}
+      PREPARED_VERSION: ${{ needs.prepare.outputs.version }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout fork automation branch
@@ -186,11 +243,13 @@ jobs:
         shell: bash
         run: |
           echo "UPSTREAM_TAG=${UPSTREAM_TAG}" >> "$GITHUB_ENV"
-          echo "SOURCE_REF=${{ needs.prepare.outputs.source_ref }}" >> "$GITHUB_ENV"
-          echo "SOURCE_SHA=${{ needs.prepare.outputs.source_sha }}" >> "$GITHUB_ENV"
-          echo "BASE_SHA=${{ needs.prepare.outputs.base_sha }}" >> "$GITHUB_ENV"
-          echo "PATCH_SHA=${{ needs.prepare.outputs.patch_sha }}" >> "$GITHUB_ENV"
-          echo "OPENCODE_VERSION=${{ needs.prepare.outputs.version }}-pr.7380.${{ github.run_number }}" >> "$GITHUB_ENV"
+          echo "SOURCE_REF=${SOURCE_REF}" >> "$GITHUB_ENV"
+          echo "SOURCE_SHA=${SOURCE_SHA}" >> "$GITHUB_ENV"
+          echo "BASE_SHA=${BASE_SHA}" >> "$GITHUB_ENV"
+          echo "PATCH_SHA=${PATCH_SHA}" >> "$GITHUB_ENV"
+          echo "INCLUDE_V2=${INCLUDE_V2}" >> "$GITHUB_ENV"
+          echo "V2_SHA=${V2_SHA}" >> "$GITHUB_ENV"
+          echo "OPENCODE_VERSION=${PREPARED_VERSION}-pr.7380.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
 
       - name: Download verification artifacts
         uses: actions/download-artifact@v8
