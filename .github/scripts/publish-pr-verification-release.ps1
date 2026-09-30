@@ -11,8 +11,11 @@ function Sanitize-Tag([string]$value) {
   return $sanitized
 }
 
+$includeV2 = $env:INCLUDE_V2 -ceq 'true'
 $releaseName = if (-not [string]::IsNullOrWhiteSpace($env:RELEASE_NAME_INPUT)) {
   $env:RELEASE_NAME_INPUT
+} elseif ($includeV2) {
+  "pr-7380-replay-$(Sanitize-Tag $env:UPSTREAM_TAG)-v2-$(Sanitize-Tag $env:V2_SHA.Substring(0, [Math]::Min(8, $env:V2_SHA.Length)))-run-$($env:GITHUB_RUN_NUMBER)"
 } elseif (-not [string]::IsNullOrWhiteSpace($env:UPSTREAM_TAG)) {
   "pr-7380-replay-$(Sanitize-Tag $env:UPSTREAM_TAG)"
 } elseif (-not [string]::IsNullOrWhiteSpace($env:OPENCODE_VERSION)) {
@@ -20,12 +23,11 @@ $releaseName = if (-not [string]::IsNullOrWhiteSpace($env:RELEASE_NAME_INPUT)) {
 } else {
   "pr-7380-replay-$($env:GITHUB_RUN_NUMBER)"
 }
-$includeV2 = $env:INCLUDE_V2 -ceq 'true'
 if ($includeV2) {
   if ($env:PRERELEASE -cne 'true') {
     throw "INCLUDE_V2=true requires PRERELEASE=true."
   }
-  if (-not $releaseName.EndsWith('-v2', [StringComparison]::OrdinalIgnoreCase)) {
+  if (-not $releaseName.EndsWith('-v2', [StringComparison]::OrdinalIgnoreCase) -and $env:RELEASE_NAME_INPUT) {
     $releaseName = "$releaseName-v2"
   }
 }
@@ -87,8 +89,9 @@ Set-Content -LiteralPath $shaPath -Value $checksumLines
 $buildInfoContents = @{}
 foreach ($file in $buildInfoFiles) {
   $content = Get-Content -LiteralPath $file.FullName -Raw
-  if ($content -notmatch '(?m)^- Source commit: ([0-9a-fA-F]+)\s*$' -or -not [string]::Equals($Matches[1], $env:SOURCE_SHA, [StringComparison]::OrdinalIgnoreCase)) {
-    throw "Build-info $($file.Name) does not record the expected source SHA."
+  $expectedSourceSha = if ($includeV2 -and $file.Name -like 'lildax-*.build-info.md') { $env:V2_SHA } else { $env:SOURCE_SHA }
+  if ($content -notmatch '(?m)^- Source commit: ([0-9a-fA-F]+)\s*$' -or -not [string]::Equals($Matches[1], $expectedSourceSha, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Build-info $($file.Name) does not record the expected source SHA $expectedSourceSha."
   }
   if ($includeV2 -and $file.Name -like 'lildax-*.build-info.md') {
     if ([string]::IsNullOrWhiteSpace($env:V2_SHA) -or $content -notmatch '(?m)^- V2_SHA: (\S+)\s*$') {
@@ -109,7 +112,7 @@ This is an unofficial verification build based on OpenCode '$($env:UPSTREAM_TAG)
 
 It replays '$($env:BASE_BRANCH)' and '$($env:PATCH_BRANCH)' on top of that tag.
 
-Replay strategy: cherry-pick -X theirs.
+Replay strategy: ordinary git cherry-pick (without -X theirs).
 
 Source SHA: $($env:SOURCE_SHA)
 
@@ -137,9 +140,11 @@ if ($includeV2) {
   $releaseNotes = @"
 # Experimental lildax v2 PR #7380 verification build
 
-This prerelease contains two distinct products: OpenCode v1 builds (`opencode-*`) and experimental lildax v2 builds (`lildax-*`). The v2 builds are experimental and are not OpenCode v1.
+**Two independent source trees:** OpenCode v1 assets (`opencode-*`) are based on upstream tag '$($env:UPSTREAM_TAG)' with the verification fixes. Experimental lildax v2 assets (`lildax-*`) are built independently from prototype commit '$($env:V2_SHA)'. The GitHub release tag and source archive target the v1 source commit only; they do not identify or contain the v2 prototype source. The source archive is v1 only.
 
-**Important:** lildax v2 may use the normal `opencode.db`; its data is not isolated from OpenCode v1. Use with care.
+The v2 builds are experimental and are not OpenCode v1.
+
+**Important:** lildax v2 may share user data with OpenCode v1, including the normal `opencode.db`. Use with care.
 
 $releaseNotes
 "@

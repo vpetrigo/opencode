@@ -88,8 +88,11 @@ jobs:
             printf '%s' "$1" | tr -cs 'A-Za-z0-9._-' '-' | sed 's/^-*//; s/-*$//; s/-\+/-/g'
           }
 
-          source_ref="verification-source-$(sanitize "$UPSTREAM_TAG")"
-          test -n "$UPSTREAM_TAG"
+          if [[ ! "$UPSTREAM_TAG" =~ ^v1\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Expected a stable v1 release tag (v1.X.Y), got: ${UPSTREAM_TAG}" >&2
+            exit 1
+          fi
+          source_ref="verification-source-$(sanitize "$UPSTREAM_TAG")-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           git check-ref-format "refs/heads/${BASE_BRANCH}"
           git check-ref-format "refs/heads/${PATCH_BRANCH}"
           git check-ref-format "refs/tags/${UPSTREAM_TAG}"
@@ -100,11 +103,27 @@ jobs:
           git fetch origin "+refs/heads/${BASE_BRANCH}:refs/remotes/origin/${BASE_BRANCH}" "+refs/heads/${PATCH_BRANCH}:refs/remotes/origin/${PATCH_BRANCH}"
           base_sha=$(git rev-parse "refs/remotes/origin/${BASE_BRANCH}")
           patch_sha=$(git rev-parse "refs/remotes/origin/${PATCH_BRANCH}")
-          git fetch https://github.com/anomalyco/opencode.git "+refs/tags/${UPSTREAM_TAG}:refs/tags/${UPSTREAM_TAG}" "+refs/heads/dev:refs/remotes/upstream/dev"
+          issue_base=2fa3363c924c5c3e367b84a87ae478296a0ed59b
+          expected_base=c5a9fd5cbee2545f725636709e220c1a4c5b0796
+          expected_patch=d9477e2beb977d0be6e6993be2f9cd27408d8be1
+          approved_upstream=51ef4be1d3c122f18fefb510dca8d778571f4f18
+          approved_v2=e609c0dad189294045e1fb6ff315c3516c2c8511
+          git fetch https://github.com/anomalyco/opencode.git "+refs/tags/${UPSTREAM_TAG}:refs/tags/${UPSTREAM_TAG}"
+          upstream_sha=$(git rev-parse "refs/tags/${UPSTREAM_TAG}^{commit}")
 
+          test "$base_sha" = "$expected_base"
+          test "$patch_sha" = "$expected_patch"
+          test "$(git rev-parse "refs/remotes/origin/${BASE_BRANCH}")" = "$expected_base"
+          test "$(git rev-parse "refs/remotes/origin/${PATCH_BRANCH}")" = "$expected_patch"
+          git merge-base --is-ancestor "$issue_base" "refs/remotes/origin/${BASE_BRANCH}"
           git merge-base --is-ancestor "refs/remotes/origin/${BASE_BRANCH}" "refs/remotes/origin/${PATCH_BRANCH}"
+          if [ "$UPSTREAM_TAG" = "v1.18.33" ] && [ "$upstream_sha" != "$approved_upstream" ]; then
+            echo "v1.18.33 resolved to an unapproved upstream commit: ${upstream_sha}" >&2
+            exit 1
+          fi
+          test "$(git rev-list --count "${issue_base}..refs/remotes/origin/${BASE_BRANCH}")" -eq 14
+          test "$(git rev-list --count "refs/remotes/origin/${BASE_BRANCH}..refs/remotes/origin/${PATCH_BRANCH}")" -eq 6
 
-          issue_base=$(git merge-base "refs/remotes/upstream/dev" "refs/remotes/origin/${BASE_BRANCH}")
           issue_merges=$(git rev-list --merges "${issue_base}..refs/remotes/origin/${BASE_BRANCH}")
           session_merges=$(git rev-list --merges "refs/remotes/origin/${BASE_BRANCH}..refs/remotes/origin/${PATCH_BRANCH}")
           test -z "$issue_merges"
@@ -114,35 +133,35 @@ jobs:
           session_commits=$(git rev-list --reverse --no-merges "refs/remotes/origin/${BASE_BRANCH}..refs/remotes/origin/${PATCH_BRANCH}")
 
           echo "Issue replay base: ${issue_base}"
+          echo "Issue replay range: ${issue_base}..${base_sha} (14 commits)"
+          echo "Session replay range: ${base_sha}..${patch_sha} (6 commits)"
           echo "Issue replay commits:"
           git log --oneline --reverse --no-merges "${issue_base}..refs/remotes/origin/${BASE_BRANCH}"
           echo "Session replay commits:"
           git log --oneline --reverse --no-merges "refs/remotes/origin/${BASE_BRANCH}..refs/remotes/origin/${PATCH_BRANCH}"
 
-          git checkout --detach "$UPSTREAM_TAG"
+          git checkout --detach "$upstream_sha"
 
           if [ -n "$issue_commits" ]; then
-            git cherry-pick -X theirs $issue_commits
+            git cherry-pick $issue_commits
           fi
 
           if [ -n "$session_commits" ]; then
-            git cherry-pick -X theirs $session_commits
+            git cherry-pick $session_commits
           fi
 
           v2_sha=""
           if [ "$INCLUDE_V2" = "true" ]; then
             git fetch origin "+refs/heads/${V2_BRANCH}:refs/remotes/origin/${V2_BRANCH}"
             v2_sha=$(git rev-parse "refs/remotes/origin/${V2_BRANCH}")
-            git merge-base --is-ancestor "$patch_sha" "$v2_sha"
-            v2_commits=$(git rev-list --reverse --no-merges "${patch_sha}..${v2_sha}")
-            v2_count=$(printf '%s\n' "$v2_commits" | sed '/^$/d' | wc -l)
-            test "$v2_count" -eq 1
-            test -z "$(git rev-list --merges "${patch_sha}..${v2_sha}")"
-            git cherry-pick "$v2_commits"
+            if [ "$v2_sha" != "$approved_v2" ]; then
+              echo "V2 branch resolved to an unapproved commit: ${v2_sha}" >&2
+              exit 1
+            fi
           fi
 
           source_sha=$(git rev-parse HEAD)
-          git push origin "HEAD:refs/heads/${source_ref}" --force
+          git push origin "HEAD:refs/heads/${source_ref}"
 
           echo "source_ref=${source_ref}" >> "$GITHUB_OUTPUT"
           echo "source_sha=${source_sha}" >> "$GITHUB_OUTPUT"
@@ -185,6 +204,23 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Checkout prepared v1 source tree
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          path: source-v1
+          persist-credentials: false
+
+      - name: Checkout v2 prototype source tree
+        if: inputs.include_v2
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ needs.prepare.outputs.v2_sha }}
+          path: source-v2
+          persist-credentials: false
+
       - name: Export build env
         shell: bash
         run: |
@@ -193,6 +229,8 @@ jobs:
           echo "SOURCE_SHA=${SOURCE_SHA}" >> "$GITHUB_ENV"
           echo "BASE_SHA=${BASE_SHA}" >> "$GITHUB_ENV"
           echo "PATCH_SHA=${PATCH_SHA}" >> "$GITHUB_ENV"
+          echo "V1_ROOT=source-v1" >> "$GITHUB_ENV"
+          echo "V2_ROOT=source-v2" >> "$GITHUB_ENV"
           echo "INCLUDE_V2=${INCLUDE_V2}" >> "$GITHUB_ENV"
           echo "V2_SHA=${V2_SHA}" >> "$GITHUB_ENV"
           echo "OPENCODE_VERSION=${PREPARED_VERSION}-pr.7380.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
@@ -239,6 +277,23 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Checkout prepared v1 source tree
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          path: source-v1
+          persist-credentials: false
+
+      - name: Checkout v2 prototype source tree
+        if: inputs.include_v2
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ needs.prepare.outputs.v2_sha }}
+          path: source-v2
+          persist-credentials: false
+
       - name: Export publish env
         shell: bash
         run: |
@@ -247,6 +302,8 @@ jobs:
           echo "SOURCE_SHA=${SOURCE_SHA}" >> "$GITHUB_ENV"
           echo "BASE_SHA=${BASE_SHA}" >> "$GITHUB_ENV"
           echo "PATCH_SHA=${PATCH_SHA}" >> "$GITHUB_ENV"
+          echo "V1_ROOT=source-v1" >> "$GITHUB_ENV"
+          echo "V2_ROOT=source-v2" >> "$GITHUB_ENV"
           echo "INCLUDE_V2=${INCLUDE_V2}" >> "$GITHUB_ENV"
           echo "V2_SHA=${V2_SHA}" >> "$GITHUB_ENV"
           echo "OPENCODE_VERSION=${PREPARED_VERSION}-pr.7380.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
