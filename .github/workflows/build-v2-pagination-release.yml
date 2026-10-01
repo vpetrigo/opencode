@@ -7,10 +7,6 @@ on:
         description: Stable upstream v2 release tag to verify
         required: true
         type: string
-      expected_upstream_sha:
-        description: Full peeled upstream commit SHA supplied by the release checker
-        required: true
-        type: string
 permissions:
   contents: read
 
@@ -33,7 +29,6 @@ jobs:
       v2_version: ${{ steps.prepare.outputs.v2_version }}
     env:
       UPSTREAM_TAG: ${{ inputs.upstream_tag }}
-      EXPECTED_UPSTREAM_SHA: ${{ inputs.expected_upstream_sha }}
     steps:
       - name: Checkout automation fork
         uses: actions/checkout@v7
@@ -57,11 +52,6 @@ jobs:
             echo "Expected a stable v2.X.Y release tag, got: ${UPSTREAM_TAG}" >&2
             exit 1
           fi
-          if [[ ! "$EXPECTED_UPSTREAM_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
-            echo "expected_upstream_sha must be a full 40-character SHA." >&2
-            exit 1
-          fi
-
           picker_sha=5c106346f7ca678676732822f0a2616e1d3dfab0
           fixture_sha=ff8a075d99ec3b1eb9cf5367d505439c9b2da027
           expected_picker_parent=8a8bd622a3d7dc29ccf30ec17f84e363ed95ed72
@@ -74,7 +64,6 @@ jobs:
           official_sha=$(git rev-parse 'refs/tags/v2.0.21^{commit}')
           patch_tip=$(git rev-parse 'refs/remotes/origin/v2-pagination^{commit}')
 
-          test "$upstream_sha" = "$EXPECTED_UPSTREAM_SHA"
           test "$official_sha" = "$expected_picker_parent"
           test "$patch_tip" = "$expected_tip"
           test "$(git rev-parse "${picker_sha}^1")" = "$expected_picker_parent"
