@@ -25,6 +25,58 @@ import { withTimestampedFallback } from "@opencode/util/session-title-fallback"
 import { projectName } from "../util/project"
 import { useLocation } from "../context/location"
 
+type DialogSessionListQuery = { directory?: string; project?: string; subpath?: string; search?: string }
+
+export function createDialogSessionPager<T extends { id: string }>(input: {
+  list: (query: DialogSessionListQuery & { limit: number; order: "desc"; parentID: null; cursor?: string }) => Promise<{ data: T[]; cursor: { next?: string | null } }>
+}) {
+  let generation = 0
+  let key = ""
+  let cursor: string | null | undefined
+  let exhausted = false
+  let active: number | undefined
+  let pending: Promise<{ data: T[]; cursor?: string } | undefined> | undefined
+  const entries = new Map<string, T>()
+  const removed = new Set<string>()
+  const load = async (nextKey: string, query: DialogSessionListQuery, reset = false) => {
+    if (reset || key !== nextKey) {
+      generation++
+      key = nextKey
+      cursor = undefined
+      exhausted = false
+      entries.clear()
+    }
+    if (active === generation) return pending
+    if (exhausted) return { data: [...entries.values()], cursor }
+    const requestGeneration = generation
+    active = requestGeneration
+    const request = (async () => {
+      while (true) {
+        const response = await input.list({ ...query, limit: 50, order: "desc", parentID: null, ...(cursor ? { cursor } : {}) })
+        if (requestGeneration !== generation) return
+        const previousSize = entries.size
+        for (const item of response.data) if (!removed.has(item.id)) entries.set(item.id, item)
+        cursor = response.cursor.next
+        exhausted = !cursor
+        if (entries.size > previousSize || exhausted) break
+      }
+      if (requestGeneration !== generation) return
+      return { data: [...entries.values()], cursor: cursor ?? undefined }
+    })().finally(() => {
+      if (active === requestGeneration) active = undefined
+    })
+    pending = request
+    return request
+  }
+  return {
+    load,
+    remove: (id: string) => {
+      entries.delete(id)
+      removed.add(id)
+    },
+  }
+}
+
 export function DialogSessionList() {
   const dialog = useDialog()
   const route = useRoute()
@@ -44,6 +96,9 @@ export function DialogSessionList() {
     initial: { allProjects: config.tabs?.scope !== "cwd" },
   })
   const allProjects = () => prefs.allProjects
+  const pager = createDialogSessionPager<SessionInfo>({ list: (query) => client.api.session.list(query) })
+  const [loadingMore, setLoadingMore] = createSignal(false)
+  let searchGeneration = 0
   const pickerLocation = () =>
     (route.data.type === "session" ? data.session.get(route.data.sessionID)?.location : undefined) ??
     activeLocation.ref ??
@@ -56,11 +111,13 @@ export function DialogSessionList() {
       location: pickerLocation(),
     }),
     async ({ query, allProjects, location }) => {
+      const generation = ++searchGeneration
       try {
         if (!data.location.info(location)) await data.location.sync(location)
+        if (generation !== searchGeneration) return { query, allProjects, sessions: [] as SessionInfo[], cursor: undefined, error: undefined }
         const current = data.location.info(location)
         if (!current) throw new Error("Location unavailable")
-        const response = await client.api.session.list({
+        const params = {
           ...(allProjects
             ? {}
             : current.project.id === Project.ID.global
@@ -70,15 +127,16 @@ export function DialogSessionList() {
                   subpath: path.relative(current.project.directory, current.directory).replaceAll("\\", "/"),
                 }),
           ...(query ? { search: query } : {}),
-          limit: 50,
-          order: "desc",
-          parentID: null,
-        })
-        return { query, allProjects, sessions: response.data, error: undefined }
+        }
+        const key = JSON.stringify([query, allProjects, location.directory, params])
+        const response = await pager.load(key, params, true)
+        if (generation !== searchGeneration) return { query, allProjects, sessions: [] as SessionInfo[], cursor: undefined, error: undefined }
+        return { query, allProjects, key, params, locationDirectory: location.directory, generation, sessions: response?.data ?? [], cursor: response?.cursor, error: undefined }
       } catch (error) {
+        if (generation !== searchGeneration) return { query, allProjects, sessions: [] as SessionInfo[], cursor: undefined, error: undefined }
         // A transient transport failure must degrade search, not crash the TUI
         // through the root ErrorBoundary when the errored resource is read.
-        return { query, allProjects, sessions: [] as SessionInfo[], error }
+        return { query, allProjects, sessions: [] as SessionInfo[], cursor: undefined, error }
       }
     },
   )
@@ -120,6 +178,20 @@ export function DialogSessionList() {
       }
     return { message: query ? "No sessions found" : "No sessions available", error: false }
   })
+
+  const loadMore = async () => {
+    const result = searchResults.latest
+    if (!result?.cursor || !result.params || !result.key || result.generation !== searchGeneration || result.query !== filter().trim() || result.allProjects !== allProjects() || result.locationDirectory !== pickerLocation().directory || loadingMore()) return
+    setLoadingMore(true)
+    try {
+      const next = await pager.load(result.key, result.params)
+      if (next && result.generation === searchGeneration) setSearchResults((current) => current?.key === result.key ? { ...current, sessions: next.data, cursor: next.cursor } : current)
+    } catch (error) {
+      toast.show({ message: `Failed to load older sessions: ${errorMessage(error)}`, variant: "error", duration: 5000 })
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   const quickSwitchHint = createMemo(() => {
     if (sessionTabs.enabled()) return
@@ -207,12 +279,19 @@ export function DialogSessionList() {
       }
       options={options()}
       skipFilter={true}
+      preserveSelection={true}
       current={currentSessionID()}
       onFilter={(query) => {
         setFilter(query)
         setSearch(query)
       }}
       bindings={[
+        {
+          bind: "ctrl+shift+down",
+          title: "Load older sessions",
+          group: "Dialog",
+          run: () => void loadMore(),
+        },
         {
           bind: "ctrl+a",
           title: allProjects() ? "Show current directory sessions" : "Show all project sessions",
@@ -238,7 +317,21 @@ export function DialogSessionList() {
           </text>
         </box>
       }
-      onMove={() => setToDelete(undefined)}
+      onMove={(option) => {
+        setToDelete(undefined)
+        const list = options()
+        const index = list.findIndex((item) => item.value === option.value)
+        if (index >= list.length - 10) void loadMore()
+      }}
+      footer={
+        <Show when={searchResults.latest?.cursor}>
+          <text fg={theme.text.muted} onMouseUp={() => void loadMore()} onKeyDown={(event: { name: string; preventDefault(): void }) => {
+            if (event.name !== "return") return
+            event.preventDefault()
+            void loadMore()
+          }}>{loadingMore() ? "Loading older sessions…" : "↓ Load older sessions · Ctrl+Shift+↓ or click"}</text>
+        </Show>
+      }
       onSelect={(option) => {
         route.navigate({ type: "session", sessionID: option.value })
         dialog.clear()
@@ -260,7 +353,8 @@ export function DialogSessionList() {
             }
             void client.api.session
               .remove({ sessionID: option.value })
-              .then(() => {
+                .then(() => {
+                pager.remove(option.value)
                 setSearchResults((result) =>
                   result
                     ? { ...result, sessions: result.sessions.filter((session) => session.id !== option.value) }
