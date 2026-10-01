@@ -28,16 +28,6 @@ on:
         required: false
         default: true
         type: boolean
-      include_v2:
-        description: Include the v2 lildax session-list prototype
-        required: false
-        default: false
-        type: boolean
-      v2_branch:
-        description: Branch containing the v2 prototype commit
-        required: true
-        default: prototype-session-list
-        type: string
 
 permissions:
   contents: read
@@ -57,14 +47,11 @@ jobs:
       source_sha: ${{ steps.prepare.outputs.source_sha }}
       base_sha: ${{ steps.prepare.outputs.base_sha }}
       patch_sha: ${{ steps.prepare.outputs.patch_sha }}
-      v2_sha: ${{ steps.prepare.outputs.v2_sha }}
       version: ${{ steps.prepare.outputs.version }}
     env:
       UPSTREAM_TAG: ${{ inputs.upstream_tag }}
       BASE_BRANCH: ${{ inputs.base_branch }}
       PATCH_BRANCH: ${{ inputs.patch_branch }}
-      INCLUDE_V2: ${{ inputs.include_v2 }}
-      V2_BRANCH: ${{ inputs.v2_branch }}
       PRERELEASE: ${{ inputs.prerelease }}
     steps:
       - name: Checkout fork automation branch
@@ -96,10 +83,6 @@ jobs:
           git check-ref-format "refs/heads/${BASE_BRANCH}"
           git check-ref-format "refs/heads/${PATCH_BRANCH}"
           git check-ref-format "refs/tags/${UPSTREAM_TAG}"
-          if [ "$INCLUDE_V2" = "true" ]; then
-            test "$PRERELEASE" = "true"
-            git check-ref-format "refs/heads/${V2_BRANCH}"
-          fi
           git fetch origin "+refs/heads/${BASE_BRANCH}:refs/remotes/origin/${BASE_BRANCH}" "+refs/heads/${PATCH_BRANCH}:refs/remotes/origin/${PATCH_BRANCH}"
           base_sha=$(git rev-parse "refs/remotes/origin/${BASE_BRANCH}")
           patch_sha=$(git rev-parse "refs/remotes/origin/${PATCH_BRANCH}")
@@ -107,7 +90,6 @@ jobs:
           expected_base=c5a9fd5cbee2545f725636709e220c1a4c5b0796
           expected_patch=d9477e2beb977d0be6e6993be2f9cd27408d8be1
           approved_upstream=51ef4be1d3c122f18fefb510dca8d778571f4f18
-          approved_v2=e609c0dad189294045e1fb6ff315c3516c2c8511
           git fetch https://github.com/anomalyco/opencode.git "+refs/tags/${UPSTREAM_TAG}:refs/tags/${UPSTREAM_TAG}"
           upstream_sha=$(git rev-parse "refs/tags/${UPSTREAM_TAG}^{commit}")
 
@@ -150,16 +132,6 @@ jobs:
             git cherry-pick $session_commits
           fi
 
-          v2_sha=""
-          if [ "$INCLUDE_V2" = "true" ]; then
-            git fetch origin "+refs/heads/${V2_BRANCH}:refs/remotes/origin/${V2_BRANCH}"
-            v2_sha=$(git rev-parse "refs/remotes/origin/${V2_BRANCH}")
-            if [ "$v2_sha" != "$approved_v2" ]; then
-              echo "V2 branch resolved to an unapproved commit: ${v2_sha}" >&2
-              exit 1
-            fi
-          fi
-
           source_sha=$(git rev-parse HEAD)
           git push origin "HEAD:refs/heads/${source_ref}"
 
@@ -167,7 +139,6 @@ jobs:
           echo "source_sha=${source_sha}" >> "$GITHUB_OUTPUT"
           echo "base_sha=${base_sha}" >> "$GITHUB_OUTPUT"
           echo "patch_sha=${patch_sha}" >> "$GITHUB_OUTPUT"
-          echo "v2_sha=${v2_sha}" >> "$GITHUB_OUTPUT"
           echo "version=${UPSTREAM_TAG#v}" >> "$GITHUB_OUTPUT"
 
   build:
@@ -190,8 +161,6 @@ jobs:
       PATCH_BRANCH: ${{ inputs.patch_branch }}
       RELEASE_NAME_INPUT: ${{ inputs.release_name }}
       PRERELEASE: ${{ inputs.prerelease }}
-      INCLUDE_V2: ${{ inputs.include_v2 }}
-      V2_SHA: ${{ needs.prepare.outputs.v2_sha }}
       SOURCE_REF: ${{ needs.prepare.outputs.source_ref }}
       SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
       BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
@@ -212,15 +181,6 @@ jobs:
           path: source-v1
           persist-credentials: false
 
-      - name: Checkout v2 prototype source tree
-        if: inputs.include_v2
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ github.repository }}
-          ref: ${{ needs.prepare.outputs.v2_sha }}
-          path: source-v2
-          persist-credentials: false
-
       - name: Export build env
         shell: bash
         run: |
@@ -230,9 +190,6 @@ jobs:
           echo "BASE_SHA=${BASE_SHA}" >> "$GITHUB_ENV"
           echo "PATCH_SHA=${PATCH_SHA}" >> "$GITHUB_ENV"
           echo "V1_ROOT=source-v1" >> "$GITHUB_ENV"
-          echo "V2_ROOT=source-v2" >> "$GITHUB_ENV"
-          echo "INCLUDE_V2=${INCLUDE_V2}" >> "$GITHUB_ENV"
-          echo "V2_SHA=${V2_SHA}" >> "$GITHUB_ENV"
           echo "OPENCODE_VERSION=${PREPARED_VERSION}-pr.7380.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
 
       - name: Setup Bun
@@ -263,8 +220,6 @@ jobs:
       PATCH_BRANCH: ${{ inputs.patch_branch }}
       RELEASE_NAME_INPUT: ${{ inputs.release_name }}
       PRERELEASE: ${{ inputs.prerelease }}
-      INCLUDE_V2: ${{ inputs.include_v2 }}
-      V2_SHA: ${{ needs.prepare.outputs.v2_sha }}
       SOURCE_REF: ${{ needs.prepare.outputs.source_ref }}
       SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
       BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
@@ -285,15 +240,6 @@ jobs:
           path: source-v1
           persist-credentials: false
 
-      - name: Checkout v2 prototype source tree
-        if: inputs.include_v2
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ github.repository }}
-          ref: ${{ needs.prepare.outputs.v2_sha }}
-          path: source-v2
-          persist-credentials: false
-
       - name: Export publish env
         shell: bash
         run: |
@@ -303,9 +249,6 @@ jobs:
           echo "BASE_SHA=${BASE_SHA}" >> "$GITHUB_ENV"
           echo "PATCH_SHA=${PATCH_SHA}" >> "$GITHUB_ENV"
           echo "V1_ROOT=source-v1" >> "$GITHUB_ENV"
-          echo "V2_ROOT=source-v2" >> "$GITHUB_ENV"
-          echo "INCLUDE_V2=${INCLUDE_V2}" >> "$GITHUB_ENV"
-          echo "V2_SHA=${V2_SHA}" >> "$GITHUB_ENV"
           echo "OPENCODE_VERSION=${PREPARED_VERSION}-pr.7380.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
 
       - name: Download verification artifacts

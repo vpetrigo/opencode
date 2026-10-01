@@ -11,25 +11,14 @@ function Sanitize-Tag([string]$value) {
   return $sanitized
 }
 
-$includeV2 = $env:INCLUDE_V2 -ceq 'true'
 $releaseName = if (-not [string]::IsNullOrWhiteSpace($env:RELEASE_NAME_INPUT)) {
   $env:RELEASE_NAME_INPUT
-} elseif ($includeV2) {
-  "pr-7380-replay-$(Sanitize-Tag $env:UPSTREAM_TAG)-v2-$(Sanitize-Tag $env:V2_SHA.Substring(0, [Math]::Min(8, $env:V2_SHA.Length)))-run-$($env:GITHUB_RUN_NUMBER)"
 } elseif (-not [string]::IsNullOrWhiteSpace($env:UPSTREAM_TAG)) {
   "pr-7380-replay-$(Sanitize-Tag $env:UPSTREAM_TAG)"
 } elseif (-not [string]::IsNullOrWhiteSpace($env:OPENCODE_VERSION)) {
   "pr-7380-replay-$($env:OPENCODE_VERSION)"
 } else {
   "pr-7380-replay-$($env:GITHUB_RUN_NUMBER)"
-}
-if ($includeV2) {
-  if ($env:PRERELEASE -cne 'true') {
-    throw "INCLUDE_V2=true requires PRERELEASE=true."
-  }
-  if (-not $releaseName.EndsWith('-v2', [StringComparison]::OrdinalIgnoreCase) -and $env:RELEASE_NAME_INPUT) {
-    $releaseName = "$releaseName-v2"
-  }
 }
 $tagName = Sanitize-Tag $releaseName
 if (-not $tagName.StartsWith('pr-7380-')) {
@@ -38,11 +27,7 @@ if (-not $tagName.StartsWith('pr-7380-')) {
 
 $artifactRoot = Join-Path $env:RUNNER_TEMP 'opencode-verification-artifacts'
 $zips = @(Get-ChildItem -Path $artifactRoot -Filter '*.zip' -File | Sort-Object Name)
-$expectedZipNames = if ($includeV2) {
-  @('opencode-windows-x64.zip', 'opencode-linux-x64.zip', 'lildax-windows-x64.zip', 'lildax-linux-x64.zip')
-} else {
-  @('opencode-windows-x64.zip', 'opencode-linux-x64.zip')
-}
+$expectedZipNames = @('opencode-windows-x64.zip', 'opencode-linux-x64.zip')
 $actualZipNames = @($zips | ForEach-Object { $_.Name } | Sort-Object)
 $expectedZipNames = @($expectedZipNames | Sort-Object)
 if (($actualZipNames -join "`n") -cne ($expectedZipNames -join "`n")) {
@@ -89,17 +74,9 @@ Set-Content -LiteralPath $shaPath -Value $checksumLines
 $buildInfoContents = @{}
 foreach ($file in $buildInfoFiles) {
   $content = Get-Content -LiteralPath $file.FullName -Raw
-  $expectedSourceSha = if ($includeV2 -and $file.Name -like 'lildax-*.build-info.md') { $env:V2_SHA } else { $env:SOURCE_SHA }
+  $expectedSourceSha = $env:SOURCE_SHA
   if ($content -notmatch '(?m)^- Source commit: ([0-9a-fA-F]+)\s*$' -or -not [string]::Equals($Matches[1], $expectedSourceSha, [StringComparison]::OrdinalIgnoreCase)) {
     throw "Build-info $($file.Name) does not record the expected source SHA $expectedSourceSha."
-  }
-  if ($includeV2 -and $file.Name -like 'lildax-*.build-info.md') {
-    if ([string]::IsNullOrWhiteSpace($env:V2_SHA) -or $content -notmatch '(?m)^- V2_SHA: (\S+)\s*$') {
-      throw "Build-info $($file.Name) is missing V2_SHA."
-    }
-    if (-not [string]::Equals($Matches[1], $env:V2_SHA, [StringComparison]::OrdinalIgnoreCase)) {
-      throw "Build-info $($file.Name) does not record the expected V2_SHA."
-    }
   }
   $buildInfoContents[$file.Name] = $content
 }
@@ -136,20 +113,6 @@ The Windows zip has the same root layout as the official CLI zip: extract it and
 
 $buildInfo
 "@
-if ($includeV2) {
-  $releaseNotes = @"
-# Experimental lildax v2 PR #7380 verification build
-
-**Two independent source trees:** OpenCode v1 assets (`opencode-*`) are based on upstream tag '$($env:UPSTREAM_TAG)' with the verification fixes. Experimental lildax v2 assets (`lildax-*`) are built independently from prototype commit '$($env:V2_SHA)'. The GitHub release tag and source archive target the v1 source commit only; they do not identify or contain the v2 prototype source. The source archive is v1 only.
-
-The v2 builds are experimental and are not OpenCode v1.
-
-**Important:** lildax v2 may share user data with OpenCode v1, including the normal `opencode.db`. Use with care.
-
-$releaseNotes
-"@
-}
-
 $localTag = git tag --list $tagName
 if ($localTag) {
   throw "Local tag $tagName already exists; refusing to move or reuse it."
