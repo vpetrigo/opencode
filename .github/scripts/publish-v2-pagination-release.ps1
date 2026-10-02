@@ -21,6 +21,9 @@ foreach ($name in $requiredEnvironment) {
     throw "Required environment variable $name is missing."
   }
 }
+if ($env:PREPARED_REF -notmatch '^verification-v2-source-[0-9]+-[0-9]+$') {
+  throw 'PREPARED_REF must be a verification-v2-source run ref.'
+}
 foreach ($name in @('UPSTREAM_SHA', 'PICKER_SHA', 'FIXTURE_SHA', 'PREPARED_SHA', 'GITHUB_SHA')) {
   if ([Environment]::GetEnvironmentVariable($name) -notmatch '^(?i)[0-9a-f]{40}$') {
     throw "Environment variable $name must be a full 40-character commit SHA."
@@ -123,15 +126,42 @@ if ($releaseLookupExitCode -ne 1 -or "$existingRelease" -notmatch '\(HTTP 404\)'
   throw "Unable to check GitHub release $tagName (gh api exit $releaseLookupExitCode): $existingRelease"
 }
 
-git fetch origin "+refs/heads/$($env:PREPARED_REF):refs/remotes/origin/$($env:PREPARED_REF)"
-$preparedRefCommit = git rev-parse --verify "refs/remotes/origin/$($env:PREPARED_REF)"
+$bundlePath = [IO.Path]::GetFullPath((Join-Path $env:RUNNER_TEMP 'opencode-v2-source/prepared-v2.bundle'))
+if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
+  throw "Prepared source bundle does not exist: $bundlePath"
+}
+git bundle verify $bundlePath
+if ($LASTEXITCODE -ne 0) {
+  throw 'Prepared source bundle verification failed.'
+}
+$bundleHeads = @(git bundle list-heads $bundlePath)
+if ($LASTEXITCODE -ne 0) {
+  throw 'Unable to read prepared source bundle heads.'
+}
+$bundleRef = "refs/heads/$($env:PREPARED_REF)"
+$advertisedHead = @($bundleHeads | ForEach-Object { "$($_)".Trim() } | Where-Object { $_ -match "^[0-9a-fA-F]{40}\s+$([regex]::Escape($bundleRef))$" })
+if ($advertisedHead.Count -ne 1 -or -not [string]::Equals(($advertisedHead[0] -split '\s+')[0], $env:PREPARED_SHA, [StringComparison]::OrdinalIgnoreCase)) {
+  throw "Bundle ref $bundleRef does not advertise PREPARED_SHA $($env:PREPARED_SHA)."
+}
+git fetch --no-tags $bundlePath "+${bundleRef}:${bundleRef}"
+if ($LASTEXITCODE -ne 0) {
+  throw "Unable to import prepared bundle ref $bundleRef."
+}
+$preparedRefCommit = git rev-parse --verify $bundleRef
 if ($LASTEXITCODE -ne 0 -or -not [string]::Equals("$preparedRefCommit".Trim(), $env:PREPARED_SHA, [StringComparison]::OrdinalIgnoreCase)) {
   throw "Prepared ref $($env:PREPARED_REF) does not resolve to PREPARED_SHA $($env:PREPARED_SHA)."
 }
-git checkout --detach $env:PREPARED_SHA
-$headCommit = git rev-parse HEAD
-if ($LASTEXITCODE -ne 0 -or -not [string]::Equals("$headCommit".Trim(), $env:PREPARED_SHA, [StringComparison]::OrdinalIgnoreCase)) {
-  throw "Checked-out HEAD is not PREPARED_SHA $($env:PREPARED_SHA)."
+$parentCommit = git rev-parse --verify "$($env:PREPARED_SHA)^"
+if ($LASTEXITCODE -ne 0) {
+  throw 'Prepared source commit has no first parent.'
+}
+$upstreamParent = git rev-parse --verify "$($env:PREPARED_SHA)~2"
+if ($LASTEXITCODE -ne 0 -or -not [string]::Equals("$upstreamParent".Trim(), $env:UPSTREAM_SHA, [StringComparison]::OrdinalIgnoreCase)) {
+  throw 'Prepared source commit must be exactly two commits beyond UPSTREAM_SHA.'
+}
+$preparedCommits = @(git rev-list --merges "$($env:UPSTREAM_SHA)..$($env:PREPARED_SHA)")
+if ($LASTEXITCODE -ne 0 -or $preparedCommits.Count -ne 0) {
+  throw 'Prepared source range contains merge commits or could not be verified.'
 }
 
 git tag $tagName $env:PREPARED_SHA

@@ -123,7 +123,7 @@ $metadata = @"
 - Picker SHA: $env:PICKER_SHA
 - Fixture SHA: $env:FIXTURE_SHA
 - Prepared source SHA: $env:PREPARED_SHA
-- Prepared source ref: $env:PREPARED_REF
+- Bundle-local prepared source ref: $env:PREPARED_REF
 - Automation revision (GITHUB_SHA): $env:GITHUB_SHA
 - Version: $env:V2_VERSION
 - ZIP SHA-256: $hash
