@@ -85,7 +85,9 @@ $releaseNotes = @"
 This is an unofficial, patched build derived from upstream '$($env:UPSTREAM_TAG)' and is not an official OpenCode release. It contains only the standalone v2 pagination build; it is separate from the v1 verification release and has no v1 assets.
 
 Release tag: $tagName
-Prepared v2 source SHA (the tag and source archive target): $($env:PREPARED_SHA)
+**Important:** The GitHub tag and GitHub-generated source archives point to the automation workflow tree at $($env:GITHUB_SHA), not the patched v2 source. The attached 'prepared-v2.bundle' is the exact prepared v2 source at $($env:PREPARED_SHA); the binaries were built from that SHA. The bundle-local ref is 'refs/heads/$($env:PREPARED_REF)'.
+Prepared v2 source SHA (bundle and binary source): $($env:PREPARED_SHA)
+Automation workflow tree SHA (tag and GitHub source archives): $($env:GITHUB_SHA)
 Upstream source SHA: $($env:UPSTREAM_SHA)
 Picker patch SHA: $($env:PICKER_SHA)
 Fixture SHA: $($env:FIXTURE_SHA)
@@ -164,13 +166,18 @@ if ($LASTEXITCODE -ne 0 -or $preparedCommits.Count -ne 0) {
   throw 'Prepared source range contains merge commits or could not be verified.'
 }
 
-git tag $tagName $env:PREPARED_SHA
+$headCommit = git rev-parse --verify HEAD
+if ($LASTEXITCODE -ne 0 -or -not [string]::Equals("$headCommit".Trim(), $env:GITHUB_SHA, [StringComparison]::OrdinalIgnoreCase)) {
+  throw "Checked-out HEAD is not the automation workflow commit GITHUB_SHA $($env:GITHUB_SHA)."
+}
+
+git tag $tagName $env:GITHUB_SHA
 if ($LASTEXITCODE -ne 0) {
   throw "Unable to create local tag $tagName."
 }
 $tagCommit = git rev-parse --verify "$tagName^{commit}"
-if ($LASTEXITCODE -ne 0 -or -not [string]::Equals("$tagCommit".Trim(), $env:PREPARED_SHA, [StringComparison]::OrdinalIgnoreCase)) {
-  throw "Created tag $tagName does not point to PREPARED_SHA."
+if ($LASTEXITCODE -ne 0 -or -not [string]::Equals("$tagCommit".Trim(), $env:GITHUB_SHA, [StringComparison]::OrdinalIgnoreCase)) {
+  throw "Created tag $tagName does not point to GITHUB_SHA."
 }
 
 git push origin $tagName
@@ -185,8 +192,8 @@ $pushedTagLines = @($pushedTag | ForEach-Object { "$($_)".Trim() } | Where-Objec
 $peeledTag = @($pushedTagLines | Where-Object { $_ -match "\srefs/tags/$([regex]::Escape($tagName))\^\{\}$" })
 $directTag = @($pushedTagLines | Where-Object { $_ -match "\srefs/tags/$([regex]::Escape($tagName))$" })
 $remoteTagCommit = if ($peeledTag.Count -eq 1) { ($peeledTag[0] -split '\s+')[0] } elseif ($directTag.Count -eq 1) { ($directTag[0] -split '\s+')[0] } else { '' }
-if (-not [string]::Equals($remoteTagCommit, $env:PREPARED_SHA, [StringComparison]::OrdinalIgnoreCase)) {
-  throw "Remote tag $tagName does not resolve to PREPARED_SHA $($env:PREPARED_SHA)."
+if (-not [string]::Equals($remoteTagCommit, $env:GITHUB_SHA, [StringComparison]::OrdinalIgnoreCase)) {
+  throw "Remote tag $tagName does not resolve to GITHUB_SHA $($env:GITHUB_SHA)."
 }
 
 $releaseArgs = @('release', 'create', $tagName) + @(
@@ -196,6 +203,7 @@ $releaseArgs = @('release', 'create', $tagName) + @(
   (Join-Path $artifactRoot $expectedChecksumNames[1]),
   (Join-Path $artifactRoot $expectedBuildInfoNames[0]),
   (Join-Path $artifactRoot $expectedBuildInfoNames[1]),
+  $bundlePath,
   '--repo', $env:GITHUB_REPOSITORY,
   '--title', $tagName,
   '--notes', $releaseNotes,

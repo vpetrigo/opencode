@@ -88,7 +88,8 @@ jobs:
               assets=$(printf '%s' "$release" | jq -r '[.assets[].name] | sort | join("\n")')
               expected_assets=$(printf '%s\n' \
                 opencode-v2-linux-x64.zip opencode-v2-linux-x64.sha256 opencode-v2-linux-x64.build-info.md \
-                opencode-v2-windows-x64.zip opencode-v2-windows-x64.sha256 opencode-v2-windows-x64.build-info.md | sort)
+                opencode-v2-windows-x64.zip opencode-v2-windows-x64.sha256 opencode-v2-windows-x64.build-info.md \
+                prepared-v2.bundle | sort)
               if [ "$assets" != "$expected_assets" ]; then
                 echo "Published release ${release_tag} has unexpected assets; operator recovery required" >&2
                 exit 1
