@@ -81,44 +81,66 @@ jobs:
           git check-ref-format "refs/heads/${BASE_BRANCH}"
           git check-ref-format "refs/heads/${PATCH_BRANCH}"
           git check-ref-format "refs/tags/${UPSTREAM_TAG}"
-          git fetch origin "+refs/heads/${BASE_BRANCH}:refs/remotes/origin/${BASE_BRANCH}" "+refs/heads/${PATCH_BRANCH}:refs/remotes/origin/${PATCH_BRANCH}"
-          base_sha=$(git rev-parse "refs/remotes/origin/${BASE_BRANCH}")
-          patch_sha=$(git rev-parse "refs/remotes/origin/${PATCH_BRANCH}")
           issue_base=2fa3363c924c5c3e367b84a87ae478296a0ed59b
-          expected_base=c5a9fd5cbee2545f725636709e220c1a4c5b0796
-          expected_patch=d9477e2beb977d0be6e6993be2f9cd27408d8be1
+          base_sha=c5a9fd5cbee2545f725636709e220c1a4c5b0796
+          patch_sha=d9477e2beb977d0be6e6993be2f9cd27408d8be1
           approved_upstream=51ef4be1d3c122f18fefb510dca8d778571f4f18
+          git fetch origin "+refs/heads/${BASE_BRANCH}:refs/remotes/origin/${BASE_BRANCH}" "+refs/heads/${PATCH_BRANCH}:refs/remotes/origin/${PATCH_BRANCH}"
+          current_base_sha=$(git rev-parse "refs/remotes/origin/${BASE_BRANCH}")
+          current_patch_sha=$(git rev-parse "refs/remotes/origin/${PATCH_BRANCH}")
+          git fetch origin "$base_sha" "$patch_sha"
+          git cat-file -e "${issue_base}^{commit}"
+          git cat-file -e "${base_sha}^{commit}"
+          git cat-file -e "${patch_sha}^{commit}"
           git fetch https://github.com/anomalyco/opencode.git "+refs/tags/${UPSTREAM_TAG}:refs/tags/${UPSTREAM_TAG}"
           upstream_sha=$(git rev-parse "refs/tags/${UPSTREAM_TAG}^{commit}")
 
-          test "$base_sha" = "$expected_base"
-          test "$patch_sha" = "$expected_patch"
-          test "$(git rev-parse "refs/remotes/origin/${BASE_BRANCH}")" = "$expected_base"
-          test "$(git rev-parse "refs/remotes/origin/${PATCH_BRANCH}")" = "$expected_patch"
-          git merge-base --is-ancestor "$issue_base" "refs/remotes/origin/${BASE_BRANCH}"
-          git merge-base --is-ancestor "refs/remotes/origin/${BASE_BRANCH}" "refs/remotes/origin/${PATCH_BRANCH}"
+          echo "Requested base branch ${BASE_BRANCH} currently resolves to ${current_base_sha}; replay snapshot is ${base_sha}."
+          echo "Requested patch branch ${PATCH_BRANCH} currently resolves to ${current_patch_sha}; replay snapshot is ${patch_sha}."
+          if ! git merge-base --is-ancestor "$issue_base" "$base_sha"; then
+            echo "Pinned base snapshot ${base_sha} is not descended from issue base ${issue_base}." >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$base_sha" "$patch_sha"; then
+            echo "Pinned patch snapshot ${patch_sha} is not descended from pinned base ${base_sha}." >&2
+            exit 1
+          fi
           if [ "$UPSTREAM_TAG" = "v1.18.33" ] && [ "$upstream_sha" != "$approved_upstream" ]; then
             echo "v1.18.33 resolved to an unapproved upstream commit: ${upstream_sha}" >&2
             exit 1
           fi
-          test "$(git rev-list --count "${issue_base}..refs/remotes/origin/${BASE_BRANCH}")" -eq 14
-          test "$(git rev-list --count "refs/remotes/origin/${BASE_BRANCH}..refs/remotes/origin/${PATCH_BRANCH}")" -eq 6
+          issue_count=$(git rev-list --count "${issue_base}..${base_sha}")
+          if [ "$issue_count" -ne 14 ]; then
+            echo "Expected 14 pinned issue commits, found ${issue_count}." >&2
+            exit 1
+          fi
+          session_count=$(git rev-list --count "${base_sha}..${patch_sha}")
+          if [ "$session_count" -ne 6 ]; then
+            echo "Expected 6 pinned session commits, found ${session_count}." >&2
+            exit 1
+          fi
 
-          issue_merges=$(git rev-list --merges "${issue_base}..refs/remotes/origin/${BASE_BRANCH}")
-          session_merges=$(git rev-list --merges "refs/remotes/origin/${BASE_BRANCH}..refs/remotes/origin/${PATCH_BRANCH}")
-          test -z "$issue_merges"
-          test -z "$session_merges"
+          issue_merges=$(git rev-list --merges "${issue_base}..${base_sha}")
+          if [ -n "$issue_merges" ]; then
+            echo "Pinned issue replay range contains merge commits: ${issue_merges}" >&2
+            exit 1
+          fi
+          session_merges=$(git rev-list --merges "${base_sha}..${patch_sha}")
+          if [ -n "$session_merges" ]; then
+            echo "Pinned session replay range contains merge commits: ${session_merges}" >&2
+            exit 1
+          fi
 
-          issue_commits=$(git rev-list --reverse --no-merges "${issue_base}..refs/remotes/origin/${BASE_BRANCH}")
-          session_commits=$(git rev-list --reverse --no-merges "refs/remotes/origin/${BASE_BRANCH}..refs/remotes/origin/${PATCH_BRANCH}")
+          issue_commits=$(git rev-list --reverse --no-merges "${issue_base}..${base_sha}")
+          session_commits=$(git rev-list --reverse --no-merges "${base_sha}..${patch_sha}")
 
           echo "Issue replay base: ${issue_base}"
           echo "Issue replay range: ${issue_base}..${base_sha} (14 commits)"
           echo "Session replay range: ${base_sha}..${patch_sha} (6 commits)"
           echo "Issue replay commits:"
-          git log --oneline --reverse --no-merges "${issue_base}..refs/remotes/origin/${BASE_BRANCH}"
+          git log --oneline --reverse --no-merges "${issue_base}..${base_sha}"
           echo "Session replay commits:"
-          git log --oneline --reverse --no-merges "refs/remotes/origin/${BASE_BRANCH}..refs/remotes/origin/${PATCH_BRANCH}"
+          git log --oneline --reverse --no-merges "${base_sha}..${patch_sha}"
 
           git checkout --detach "$upstream_sha"
 
@@ -131,8 +153,16 @@ jobs:
           fi
 
           source_sha=$(git rev-parse HEAD)
-          test "$(git rev-list --count "${upstream_sha}..${source_sha}")" -eq 20
-          test -z "$(git rev-list --merges "${upstream_sha}..${source_sha}")"
+          replay_count=$(git rev-list --count "${upstream_sha}..${source_sha}")
+          if [ "$replay_count" -ne 20 ]; then
+            echo "Expected 20 replayed commits after upstream, found ${replay_count}." >&2
+            exit 1
+          fi
+          replay_merges=$(git rev-list --merges "${upstream_sha}..${source_sha}")
+          if [ -n "$replay_merges" ]; then
+            echo "Prepared replay range contains merge commits: ${replay_merges}" >&2
+            exit 1
+          fi
           source_ref="verification-source-$(sanitize "$UPSTREAM_TAG")-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           source_bundle="$RUNNER_TEMP/prepared-v1.bundle"
           git check-ref-format "refs/heads/${source_ref}"
