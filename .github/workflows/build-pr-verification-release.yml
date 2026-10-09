@@ -41,7 +41,7 @@ jobs:
     name: Prepare source ref
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     outputs:
       source_ref: ${{ steps.prepare.outputs.source_ref }}
       source_sha: ${{ steps.prepare.outputs.source_sha }}
@@ -58,7 +58,6 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          token: ${{ github.token }}
 
       - name: Configure git identity
         shell: bash
@@ -66,7 +65,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-      - name: Prepare and push source ref
+      - name: Prepare and bundle source
         id: prepare
         shell: bash
         run: |
@@ -79,7 +78,6 @@ jobs:
             echo "Expected a stable v1 release tag (v1.X.Y), got: ${UPSTREAM_TAG}" >&2
             exit 1
           fi
-          source_ref="verification-source-$(sanitize "$UPSTREAM_TAG")-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           git check-ref-format "refs/heads/${BASE_BRANCH}"
           git check-ref-format "refs/heads/${PATCH_BRANCH}"
           git check-ref-format "refs/tags/${UPSTREAM_TAG}"
@@ -125,21 +123,35 @@ jobs:
           git checkout --detach "$upstream_sha"
 
           if [ -n "$issue_commits" ]; then
-            git cherry-pick $issue_commits
+            git cherry-pick -x $issue_commits
           fi
 
           if [ -n "$session_commits" ]; then
-            git cherry-pick $session_commits
+            git cherry-pick -x $session_commits
           fi
 
           source_sha=$(git rev-parse HEAD)
-          git push origin "HEAD:refs/heads/${source_ref}"
+          test "$(git rev-list --count "${upstream_sha}..${source_sha}")" -eq 20
+          test -z "$(git rev-list --merges "${upstream_sha}..${source_sha}")"
+          source_ref="verification-source-$(sanitize "$UPSTREAM_TAG")-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          source_bundle="$RUNNER_TEMP/prepared-v1.bundle"
+          git check-ref-format "refs/heads/${source_ref}"
+          git update-ref "refs/heads/${source_ref}" "$source_sha"
+          git bundle create "$source_bundle" "refs/heads/${source_ref}"
+          git bundle verify "$source_bundle"
 
           echo "source_ref=${source_ref}" >> "$GITHUB_OUTPUT"
           echo "source_sha=${source_sha}" >> "$GITHUB_OUTPUT"
           echo "base_sha=${base_sha}" >> "$GITHUB_OUTPUT"
           echo "patch_sha=${patch_sha}" >> "$GITHUB_OUTPUT"
           echo "version=${UPSTREAM_TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload prepared v1 source bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.prepare.outputs.source_ref }}
+          path: ${{ runner.temp }}/prepared-v1.bundle
+          if-no-files-found: error
 
   build:
     name: Build ${{ matrix.name }}
@@ -173,13 +185,24 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Checkout prepared v1 source tree
-        uses: actions/checkout@v7
+      - name: Download prepared v1 source bundle
+        uses: actions/download-artifact@v8
         with:
-          repository: ${{ github.repository }}
-          ref: ${{ needs.prepare.outputs.source_sha }}
-          path: source-v1
-          persist-credentials: false
+          name: ${{ needs.prepare.outputs.source_ref }}
+          path: ${{ runner.temp }}/opencode-v1-source
+
+      - name: Import and verify prepared v1 source
+        shell: bash
+        env:
+          SOURCE_BUNDLE: ${{ runner.temp }}/opencode-v1-source/prepared-v1.bundle
+        run: |
+          set -euo pipefail
+          git init source-v1
+          git -C source-v1 bundle verify "$SOURCE_BUNDLE"
+          git -C source-v1 bundle list-heads "$SOURCE_BUNDLE" | awk -v ref="refs/heads/${SOURCE_REF}" -v sha="$SOURCE_SHA" '$1 == sha && $2 == ref { found = 1 } END { exit !found }'
+          git -C source-v1 fetch --no-tags "$SOURCE_BUNDLE" "refs/heads/${SOURCE_REF}:refs/heads/${SOURCE_REF}"
+          git -C source-v1 checkout --detach "$SOURCE_SHA"
+          test "$(git -C source-v1 rev-parse HEAD)" = "$SOURCE_SHA"
 
       - name: Export build env
         shell: bash
@@ -232,13 +255,24 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Checkout prepared v1 source tree
-        uses: actions/checkout@v7
+      - name: Download prepared v1 source bundle
+        uses: actions/download-artifact@v8
         with:
-          repository: ${{ github.repository }}
-          ref: ${{ needs.prepare.outputs.source_sha }}
-          path: source-v1
-          persist-credentials: false
+          name: ${{ needs.prepare.outputs.source_ref }}
+          path: ${{ runner.temp }}/opencode-v1-source
+
+      - name: Import and verify prepared v1 source
+        shell: bash
+        env:
+          SOURCE_BUNDLE: ${{ runner.temp }}/opencode-v1-source/prepared-v1.bundle
+        run: |
+          set -euo pipefail
+          git init source-v1
+          git -C source-v1 bundle verify "$SOURCE_BUNDLE"
+          git -C source-v1 bundle list-heads "$SOURCE_BUNDLE" | awk -v ref="refs/heads/${SOURCE_REF}" -v sha="$SOURCE_SHA" '$1 == sha && $2 == ref { found = 1 } END { exit !found }'
+          git -C source-v1 fetch --no-tags "$SOURCE_BUNDLE" "refs/heads/${SOURCE_REF}:refs/heads/${SOURCE_REF}"
+          git -C source-v1 checkout --detach "$SOURCE_SHA"
+          test "$(git -C source-v1 rev-parse HEAD)" = "$SOURCE_SHA"
 
       - name: Export publish env
         shell: bash
