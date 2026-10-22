@@ -26,7 +26,7 @@ Remove-Item Env:OPENCODE_RELEASE -ErrorAction SilentlyContinue
 $bunBin = if ($env:RUNNER_OS -eq "Windows") { Join-Path $env:USERPROFILE ".bun\bin" } else { Join-Path $HOME ".bun\bin" }
 $env:PATH = "$bunBin$([IO.Path]::PathSeparator)$env:PATH"
 $bunVersion = (& bun --version).Trim()
-if ($LASTEXITCODE -ne 0 -or $bunVersion -ne "1.4.3") { throw "Bun 1.4.3 is required; found '$bunVersion'." }
+if ($LASTEXITCODE -ne 0 -or $bunVersion -ne "1.4.4") { throw "Bun 1.4.4 is required; found '$bunVersion'." }
 
 $env:CI = "true"
 Push-Location $source
