@@ -52,10 +52,10 @@ jobs:
             exit 1
           fi
           picker_sha=2ff5e33e3b627581c101d5978431a5d55a957cee
-          fixture_sha=59e39c77cec8990b85415e6ccfec568b6957d22a
+          fixture_sha=$(tr -d '\r\n' < .github/v2-pagination-fixture.sha)
           expected_picker_parent=dc2ffcf8bf26f9e669b6aa22b95f50e12be15e06
           expected_fixture_parent=2ff5e33e3b627581c101d5978431a5d55a957cee
-          expected_tip=59e39c77cec8990b85415e6ccfec568b6957d22a
+          expected_tip=$fixture_sha
 
           git fetch origin '+refs/heads/pagination-replay:refs/remotes/origin/pagination-replay'
           git fetch https://github.com/anomalyco/opencode.git "+refs/tags/${UPSTREAM_TAG}:refs/tags/${UPSTREAM_TAG}" '+refs/tags/v2.2.6:refs/tags/v2.2.6'

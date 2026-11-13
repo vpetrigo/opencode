@@ -65,12 +65,16 @@ jobs:
   check-v2:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout automation fork
+        uses: actions/checkout@v7
       - name: Dispatch unprocessed stable v2 tags
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
+          fixture_sha=$(tr -d '\r\n' < .github/v2-pagination-fixture.sha)
+          fixture_suffix=${fixture_sha:0:8}
           tags=$(git ls-remote --tags --refs https://github.com/anomalyco/opencode.git \
             | awk '$2 ~ /^refs\/tags\/v2\.[0-9]+\.[0-9]+$/ { sub("refs/tags/", "", $2); split($2, version, "."); if (version[2] > 0 || version[3] >= 21) print $2 }' \
             | sort -V | tail -n 1)
@@ -78,7 +82,7 @@ jobs:
             echo 'No stable v2 tags at or above v2.0.21'
           fi
           for upstream_tag in $tags; do
-            release_tag="v2-pagination-${upstream_tag}-ff8a075d"
+            release_tag="v2-pagination-${upstream_tag}-${fixture_suffix}"
             release_url="repos/${GITHUB_REPOSITORY}/releases/tags/${release_tag}"
             if release=$(gh api "$release_url" 2>&1); then
               if [ "$(printf '%s' "$release" | jq -r '.draft == false and .prerelease == true')" != true ]; then
